@@ -77,6 +77,7 @@ uint8_t data_size, buf[RH_RF95_MAX_MESSAGE_LEN];
 bool valve_flag, time_flag, assigned_flag, stop_flag, rf_flag, rtc_interrupt;
 //uint32_t currentTime, millix;
 int timer_manual_1, timer_manual_2, timer_manual_3, timer_manual_4;
+uint32_t start = 0;
 
 /******************************************************************* setup section ************************************************************************************/
 uint32_t millix;
@@ -131,8 +132,8 @@ void setup()
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
   // rtc.setAlarmMode(0);
 
-  //rtc.setAlarmMode(6);
-  //rtc.setAlarm(1, 0, 0, 0, 0);
+  rtc.setAlarmMode(6);
+  rtc.setAlarm(0, 0, 0, 0, 0);
   //rtc.disableInterrupt(6);
 
   // For disable the interrupt : //rtc.setAlarmMode(0);
@@ -146,49 +147,56 @@ void setup()
   DPRINT(F(" "));
   DPRINTLN(rtc.stringTime());
   print_flash();
+  delay(100);
 }
 /******************************************************************* main program  ************************************************************************************/
+bool MODE_AWAKE;
+bool MODE_SLEEP;
 void loop()
 {
-  if (Serial.available())
+  /*
+ if (Serial.available())
+ {
+  int a = Serial.read();
+  DPRINTLN(a);
+  if (a == 97)
   {
-    int a = Serial.read();
-    DPRINTLN(a);
-    if (a == 97)
+    rtc.setAlarmMode(0);
+    Serial.println("Killing interrupt");
+    // rtc.setAlarm(0, 0, 0, 0, 0);
+  }
+ }
+ */
+  if (MODE_AWAKE)
+  {
+    if (manager.available()) // Detect radio activity
     {
-      rtc.setAlarmMode(0);
-      Serial.println("Killing interrupt");
-      // rtc.setAlarm(0, 0, 0, 0, 0);
+      uint8_t len = sizeof(buf);
+      manager.recvfromAck(buf, &len);
+      listen_master(); //When activity is detected listen the master
+    }
+    if (millis() - millix >= 10000)
+    {
+      MODE_AWAKE = false;
+      Serial.println(" A dormir");
+      rtc.updateTime();
+      Serial.println(rtc.stringTime());
+      delay(10);
     }
   }
-  if (manager.available()) // Detect radio activity
+  else if (!MODE_AWAKE)
   {
-    uint8_t len = sizeof(buf);
-    manager.recvfromAck(buf, &len);
-    listen_master(); //When activity is detected listen the master
-  }
-  if (rf_flag && millis()-millix >= 7000)
-  {
-    rf_flag = false;
-    Serial.println("X");
     driver.sleep();
-    lowPower.sleep_delay(18000);
-    Serial.println("A dormir el tiempo muerto");
+    lowPower.sleep_delay(500);
   }
-
   if (rtc_interrupt)
   {
     rtc_interrupt = false;
+    MODE_AWAKE = true;
     rtc.updateTime();
     Serial.println(rtc.stringTime());
-    driver.sleep();
-    lowPower.sleep_delay(25000);
-    driver.sleep();
-    lowPower.sleep_delay(12000);
-    delay(100);
-    Serial.println("YES");
+    Serial.println("AWAKE MODE");
     millix = millis();
-    rf_flag = true;
   }
 }
 void chargeCapacitor()
@@ -364,6 +372,7 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 void listen_master() // Listen and actuate in consideration
 {
   //Serial.println("He recibido del master: ");
+  start = millis();
   uint8_t start_msg;
   bool is_for_me = false;
 
@@ -375,26 +384,25 @@ void listen_master() // Listen and actuate in consideration
         start_msg = i + 2;
   }
   Serial.println(" ");
-
   //I clasified the message received:
   switch (buf[start_msg])
   {
   case MANVAL_MSG:
-    Serial.println("VALVE ACTION");
+    //Serial.println("VALVE ACTION");
     valve_flag = true;
     break;
   case TIME_MSG:
-    Serial.println("TIME MODE");
-    send_master(ACK);
+    //Serial.println("TIME MODE");
+    //send_master(ACK);
     time_flag = true;
     break;
   case ASSIGNED_MSG:
-    Serial.println("ASSIGNED MODE");
-    send_master(ACK);
+    //Serial.println("ASSIGNED MODE");
+    //send_master(ACK);
     assigned_flag = true;
     break;
   case STOP_MSG:
-    Serial.println("STOP MODE");
+    //Serial.println("STOP MODE");
     stop_flag = true;
     break;
   default:
@@ -430,12 +438,12 @@ void listen_master() // Listen and actuate in consideration
       month = buf[30] - '0';
     else
       month = (buf[29] - '0') * 10 + (buf[30] - '0');
-
-    seconds += 7;
+    if (seconds < 53)
+      seconds += 7;
 
     change_time(hours, minutes, day, month, seconds, 2020);
     rtc.setAlarmMode(6);
-    rtc.setAlarm(30, 0, 0, 0, 0);
+    rtc.setAlarm(0, 0, 0, 0, 0);
   }
   else if (valve_flag)
   {
@@ -446,12 +454,12 @@ void listen_master() // Listen and actuate in consideration
       uint8_t valve_action = (buf[9] - '0') * 100 + (buf[10] - '0') * 10 + (buf[11] - '0');
       uint8_t valve_time_hours = (buf[13] - '0') * 10 + (buf[14] - '0');
       uint8_t valve_time_minutes = (buf[13 + 3] - '0') * 10 + (buf[14 + 3] - '0');
-      Serial.print("Valve action: ");
-      Serial.print(valve_action);
-      Serial.print(" time: ");
-      Serial.print(valve_time_hours);
-      Serial.print(":");
-      Serial.print(valve_time_minutes);
+      //Serial.print("Valve action: ");
+      //Serial.print(valve_action);
+      //Serial.print(" time: ");
+      //Serial.print(valve_time_hours);
+      //Serial.print(":");
+      //Serial.print(valve_time_minutes);
 
       for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
       {
@@ -558,7 +566,9 @@ void listen_master() // Listen and actuate in consideration
   {
     Serial.println("no tiene que salir");
   }
-  jam.ledBlink(LED_SETUP, 10);
+  Serial.println("");
+  Serial.print("TIME DONE IN: ");
+  Serial.println(millis() - start);
 }
 void send_master(uint8_t msg)
 {
@@ -592,7 +602,7 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
   currentTime[6] = rtc.DECtoBCD(year - 2000);
   currentTime[7] = rtc.DECtoBCD(0);
   rtc.setTime(currentTime, TIME_ARRAY_LENGTH);
-  //rtc.updateTime();
+  Serial.println("TIME CHANGE");
   //Serial.print(rtc.stringDate());
   //Serial.print(" ");
   //Serial.println(rtc.stringTime());
@@ -612,10 +622,10 @@ void rtcInt()
 void buttonInt()
 {
   DPRINTLN("BUTTON PRESSED");
-  jam.ledBlink(LED_SETUP, 5000);
+  //jam.ledBlink(LED_SETUP, 1000);
   //disable the interrupt just for always receiving the message
-  rtc.setAlarmMode(0);
-  //rtc.setAlarm(1, 0, 0, 0, 0);
+  rtc.setAlarmMode(6);
+  rtc.setAlarm(0, 0, 0, 0, 0);
 }
 void print_flash()
 {
@@ -636,30 +646,3 @@ void print_flash()
   Serial.write(sys.master_id[1]);
   Serial.println(" ");
 }
-/*
-void manual_stop_timer_1()
-{
-  DPRINTLN("STOP MANUAL VALVE 1 ACTION");
-  timer_manual_valve_1.deleteTimer(timer_manual_1);
-
-  valveAction(1, false);
-}
-void manual_stop_timer_2()
-{
-  DPRINTLN("STOP MANUAL VALVE 2 ACTION");
-  timer_manual_valve_2.deleteTimer(timer_manual_2);
-  valveAction(2, false);
-}
-void manual_stop_timer_3()
-{
-  DPRINTLN("STOP MANUAL VALVE 3 ACTION");
-  timer_manual_valve_3.deleteTimer(timer_manual_3);
-  valveAction(3, false);
-}
-void manual_stop_timer_4()
-{
-  DPRINTLN("STOP MANUAL VALVE 4 ACTION");
-  timer_manual_valve_4.deleteTimer(timer_manual_4);
-  valveAction(4, false);
-}
-*/

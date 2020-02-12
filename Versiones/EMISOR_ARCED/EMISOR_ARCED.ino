@@ -133,13 +133,13 @@ void setup()
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   manager.init();
-  manager.setRetries(10);
+  manager.setRetries(3);
   manager.setTimeout(175);
   driver.setTxPower(20, false);
   SWire.begin();
   rtc.begin();
   rtc.set24Hour();
-  //rtc.setAlarmMode(4);
+  // rtc.setAlarmMode(0);
   //rtc.setAlarm(0, 30, 0, 0, 0);
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
@@ -154,14 +154,15 @@ void setup()
     comError[i] = false;
 }
 char asignacion[] = {1, 2, 15, random(1, 127)};
-bool wait_oasis_nap;
+bool oasis_actions;
 uint32_t millix;
 bool valve_timer_on;
 uint8_t index_prog_A, index_prog_B, index_prog_C, index_prog_D, index_prog_E, index_prog_F;
 bool start_programA, start_programB, start_programC, start_programD, start_programE, start_programF;
 bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
-#define tim_test = 120;
+#define tim_test 0
 
+uint32_t start = 0;
 void loop()
 {
   /*
@@ -177,7 +178,7 @@ void loop()
     {
       send_nodo(UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
       rtc.setAlarmMode(6);
-      rtc.setAlarm(30, 0, 0, 0, 0);
+      rtc.setAlarm(0, 0, 0, 0, 0);
     }
     //send_nodo(UUID_1, REQUEST_MANUAL, 2, 0, 1, asignacion);
     if (a == 98)
@@ -416,7 +417,7 @@ void loop()
   if (!digitalRead(PCINT_PIN))
   {
     Serial.println("BUTTON PRESSED");
-    //send_nodo(UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+    send_nodo(UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
     //getAllFromPG();
 
     rtc.setAlarmMode(0);
@@ -426,20 +427,25 @@ void loop()
     intRtc = false;
     rtc.updateTime();
     Serial.println(rtc.stringTime());
-    wait_oasis_nap = true;
+    oasis_actions = true;
     millix = millis();
   }
-  if (wait_oasis_nap && millis() - millix > 30000)
+  if (oasis_actions)
   {
-    wait_oasis_nap = false;
     // Always the first message have to be sync
+    start = millis();
     send_nodo(UUID_1, REQUEST_TIME, 120, 0, 0, asignacion);
-    delay(tim_test);
+    //delay(1000);
     send_nodo(UUID_1, REQUEST_MANVAL, 121, 0, 0, asignacion);
-    delay(tim_test);
+    //delay(tim_test);
     send_nodo(UUID_1, REQUEST_MANVAL, 122, 0, 0, asignacion);
-    delay(tim_test);
+    //delay(tim_test);
     send_nodo(UUID_1, REQUEST_MANVAL, 123, 0, 0, asignacion);
+    Serial.print("FINNISH SENDDING IN: ");
+    Serial.println(millis() - start);
+    //delay(1000);
+    //if (millis() - millix > 2000)
+    oasis_actions = false;
   }
   //timerA.run();
   //timerB.run();
@@ -745,7 +751,7 @@ void send_nodo(uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes,
   }
   */
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
-  Serial.println("HAVE SENT");
+  //Serial.println("HAVE SENT");
 }
 void rtc_node(int hour, int minute, int second, int day, int month)
 {
@@ -762,8 +768,8 @@ void rtc_node(int hour, int minute, int second, int day, int month)
   send[28 + 2] = (month % 10) + 0x30;
   for (int i = 0; i < sizeof(send); i++)
     data[i] = send[i];
-  for (int i = 0; i < sizeof(send); i++)
-    Serial.write(send[i]);
+  //for (int i = 0; i < sizeof(send); i++)
+  //  Serial.write(send[i]);
   //manager.sendtoWait(data, sizeof(send), CLIENT_ADDRESS);
 }
 void write_flash()
