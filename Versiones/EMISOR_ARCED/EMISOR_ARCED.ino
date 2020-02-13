@@ -72,7 +72,8 @@ typedef enum
   REQUEST_MANUAL,
   REQUEST_TIME,
   REQUEST_ASSIGNED_VALVES,
-  REQUEST_STOP_ALL
+  REQUEST_STOP_ALL,
+  REQUEST_FULL_MESSAGE
 } messages_radio;
 
 Jam jam;
@@ -91,9 +92,9 @@ RHReliableDatagram manager(driver, SERVER_ADDRESS);
 uint8_t UUID_1[] = {'A', '1'};
 
 // Dont put this on the stack:
-uint8_t data[70];
+uint8_t data[RH_RF95_MAX_MESSAGE_LEN];
 // THE HUGE BUFFER for SRAM:
-uint8_t buf[70];
+uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
 bool rf_flag = false;
 
 String pg;
@@ -133,7 +134,7 @@ void setup()
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   manager.init();
-  manager.setRetries(3);
+  manager.setRetries(5);
   manager.setTimeout(175);
   driver.setTxPower(20, false);
   SWire.begin();
@@ -182,7 +183,7 @@ void loop()
     }
     //send_nodo(UUID_1, REQUEST_MANUAL, 2, 0, 1, asignacion);
     if (a == 98)
-      send_nodo(UUID_1, STOP_ALL_COMMAND, 0, 0, 0, asignacion);
+      send_nodo(UUID_1, REQUEST_FULL_MESSAGE, 0, 0, 0, asignacion); /// I SEND A HUGE MESSAGE
     if (a == 99)
       send_nodo(UUID_1, REQUEST_ASSIGNED_VALVES, 11, 0, 0, asignacion);
     if (a == 100) // CLOSE VALVE if d
@@ -434,13 +435,13 @@ void loop()
   {
     // Always the first message have to be sync
     start = millis();
-    send_nodo(UUID_1, REQUEST_TIME, 120, 0, 0, asignacion);
+    send_nodo(UUID_1, REQUEST_FULL_MESSAGE, 120, 0, 0, asignacion);
     //delay(1000);
-    send_nodo(UUID_1, REQUEST_MANVAL, 121, 0, 0, asignacion);
+    //send_nodo(UUID_1, REQUEST_MANVAL, 121, 0, 0, asignacion);
     //delay(tim_test);
-    send_nodo(UUID_1, REQUEST_MANVAL, 122, 0, 0, asignacion);
+    //send_nodo(UUID_1, REQUEST_MANVAL, 122, 0, 0, asignacion);
     //delay(tim_test);
-    send_nodo(UUID_1, REQUEST_MANVAL, 123, 0, 0, asignacion);
+    //send_nodo(UUID_1, REQUEST_MANVAL, 123, 0, 0, asignacion);
     Serial.print("FINNISH SENDDING IN: ");
     Serial.println(millis() - start);
     //delay(1000);
@@ -608,7 +609,7 @@ void waitValveCloseF()
 void send_nodo(uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
 {
   //First write the destination of the message:
-  bool f_man_valve = false, f_time = false, f_asigned = false, f_stop = false, f_manual = false;
+  bool f_man_valve = false, f_time = false, f_asigned = false, f_stop = false, f_manual = false, f_full = false;
   switch (msg)
   {
   case REQUEST_MANUAL:
@@ -631,6 +632,11 @@ void send_nodo(uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes,
     Serial.println("STOP ALL");
     f_stop = true;
     break;
+  case REQUEST_FULL_MESSAGE:
+    Serial.println("FULL");
+    f_full = true;
+    break;
+
   default:
     Serial.println("JAMAS SALE");
   }
@@ -739,19 +745,16 @@ void send_nodo(uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes,
     for (int i = 0; i < sizeof(str_manual); i++)
       data[i] = str_manual[i];
   }
-  /*
-  rtc.updateTime();
-  if (rtc.getSeconds() <= 32)
+  else if (f_full)
   {
-    Serial.println("DELAY not in the window time");
-    long time = 35000 - rtc.getSeconds() * 1000;
-    Serial.println(time);
-
-    delay(time);
+    uint8_t long_message[] = "_1581603360_#00:00#00#MAN#>asdfqaswdfsdfasdfasdfTIMESTAMP:12345678#000#00:00#00#MAN#>asdfqaswdfsdfasdfasdfXXXXXXXXXX";
+    //Serial.println(long_message);
+    uint8_t tiempo = rtc.getTimestamp();
+    for (int i = 0; i < sizeof(long_message); i++)
+      data[i] = long_message[i];
   }
-  */
+  
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
-  //Serial.println("HAVE SENT");
 }
 void rtc_node(int hour, int minute, int second, int day, int month)
 {

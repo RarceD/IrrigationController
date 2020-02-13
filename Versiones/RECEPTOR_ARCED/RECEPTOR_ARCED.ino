@@ -154,7 +154,7 @@ bool MODE_AWAKE;
 bool MODE_SLEEP;
 void loop()
 {
-  /*
+
  if (Serial.available())
  {
   int a = Serial.read();
@@ -166,16 +166,20 @@ void loop()
     // rtc.setAlarm(0, 0, 0, 0, 0);
   }
  }
- */
+ 
+
   if (MODE_AWAKE)
   {
     if (manager.available()) // Detect radio activity
     {
+      start = millis();
       uint8_t len = sizeof(buf);
       manager.recvfromAck(buf, &len);
       listen_master(); //When activity is detected listen the master
+      Serial.print("TIME DONE IN: ");
+      Serial.println(millis() - start);
     }
-    if (millis() - millix >= 10000)
+    if (millis() - millix >= 25000)
     {
       MODE_AWAKE = false;
       Serial.println(" A dormir");
@@ -184,11 +188,13 @@ void loop()
       delay(10);
     }
   }
-  else if (!MODE_AWAKE)
+  
+   if (!MODE_AWAKE)
   {
-    driver.sleep();
-    lowPower.sleep_delay(500);
+    //driver.sleep();
+    //lowPower.sleep_delay(1000);
   }
+  
   if (rtc_interrupt)
   {
     rtc_interrupt = false;
@@ -198,6 +204,7 @@ void loop()
     Serial.println("AWAKE MODE");
     millix = millis();
   }
+  
 }
 void chargeCapacitor()
 {
@@ -372,7 +379,7 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 void listen_master() // Listen and actuate in consideration
 {
   //Serial.println("He recibido del master: ");
-  start = millis();
+  // start = millis();
   uint8_t start_msg;
   bool is_for_me = false;
 
@@ -566,9 +573,8 @@ void listen_master() // Listen and actuate in consideration
   {
     Serial.println("no tiene que salir");
   }
-  Serial.println("");
-  Serial.print("TIME DONE IN: ");
-  Serial.println(millis() - start);
+
+  //Serial.println(millis() - start);
 }
 void send_master(uint8_t msg)
 {
