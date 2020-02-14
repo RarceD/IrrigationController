@@ -177,10 +177,21 @@ void loop()
     uint8_t nodo_envio[16];
     if (a == 97)
     {
-      send_nodo(UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
-      rtc.setAlarmMode(6);
-      rtc.setAlarm(0, 0, 0, 0, 0);
+      ///send_nodo(UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+      ///rtc.setAlarmMode(6);
+      ///rtc.setAlarm(0, 0, 0, 0, 0);
+      uint8_t long_message[] = "_1581603360_XNX_##STOP#ALL#00_X_##ASIGNED#000#000:000:000:000#00_X_##MANVAL#000#00:00#00_X_##STOP#ALL#00";
+      //##ASIGNED#000#000:000:000:000#00
+      //##MANVAL#000#00:00#00
+      uint8_t str[10];
+
+      uint32_t tiempo = rtc.getTimestamp();
+      Serial.println(tiempo);
+      sprintf( str, "&#37;u", tiempo );
+      memcpy(data, long_message, sizeof(long_message));
+      manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
     }
+
     //send_nodo(UUID_1, REQUEST_MANUAL, 2, 0, 1, asignacion);
     if (a == 98)
       send_nodo(UUID_1, REQUEST_FULL_MESSAGE, 0, 0, 0, asignacion); /// I SEND A HUGE MESSAGE
@@ -435,7 +446,7 @@ void loop()
   {
     // Always the first message have to be sync
     start = millis();
-    send_nodo(UUID_1, REQUEST_FULL_MESSAGE, 120, 0, 0, asignacion);
+    send_nodo(UUID_1, REQUEST_FULL_MESSAGE, 0, 0, 0, asignacion);
     //delay(1000);
     //send_nodo(UUID_1, REQUEST_MANVAL, 121, 0, 0, asignacion);
     //delay(tim_test);
@@ -747,13 +758,18 @@ void send_nodo(uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes,
   }
   else if (f_full)
   {
-    uint8_t long_message[] = "_1581603360_#00:00#00#MAN#>asdfqaswdfsdfasdfasdfTIMESTAMP:12345678#000#00:00#00#MAN#>asdfqaswdfsdfasdfasdfXXXXXXXXXX";
+    // First the timestamp, then the number of commands and finally the commands separated by X
+    uint8_t long_message[] = "_1581603360_XNX_##STOP#ALL#00_X_##ASIGNED#000#000:000:000:000#00_X_##MANVAL#000#00:00#00_X_##STOP#ALL#00";
+    //##ASIGNED#000#000:000:000:000#00
+    //##TIME:H:XX/M:XX/S:XX/D:XX/M:XX
+    //##MANVAL#000#00:00#00
+
     //Serial.println(long_message);
     uint8_t tiempo = rtc.getTimestamp();
     for (int i = 0; i < sizeof(long_message); i++)
       data[i] = long_message[i];
   }
-  
+
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
 }
 void rtc_node(int hour, int minute, int second, int day, int month)

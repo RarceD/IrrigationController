@@ -155,18 +155,17 @@ bool MODE_SLEEP;
 void loop()
 {
 
- if (Serial.available())
- {
-  int a = Serial.read();
-  DPRINTLN(a);
-  if (a == 97)
+  if (Serial.available())
   {
-    rtc.setAlarmMode(0);
-    Serial.println("Killing interrupt");
-    // rtc.setAlarm(0, 0, 0, 0, 0);
+    int a = Serial.read();
+    DPRINTLN(a);
+    if (a == 97)
+    {
+      rtc.setAlarmMode(0);
+      Serial.println("Killing interrupt");
+      // rtc.setAlarm(0, 0, 0, 0, 0);
+    }
   }
- }
- 
 
   if (MODE_AWAKE)
   {
@@ -188,13 +187,13 @@ void loop()
       delay(10);
     }
   }
-  
-   if (!MODE_AWAKE)
+
+  if (!MODE_AWAKE)
   {
     //driver.sleep();
     //lowPower.sleep_delay(1000);
   }
-  
+
   if (rtc_interrupt)
   {
     rtc_interrupt = false;
@@ -204,7 +203,6 @@ void loop()
     Serial.println("AWAKE MODE");
     millix = millis();
   }
-  
 }
 void chargeCapacitor()
 {
