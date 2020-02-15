@@ -167,26 +167,31 @@ void loop()
     }
   }
 
-  if (MODE_AWAKE)
+  //if (MODE_AWAKE)
+  //{
+  if (manager.available()) // Detect radio activity
   {
-    if (manager.available()) // Detect radio activity
-    {
-      start = millis();
-      uint8_t len = sizeof(buf);
-      manager.recvfromAck(buf, &len);
-      listen_master(); //When activity is detected listen the master
-      Serial.print("TIME DONE IN: ");
-      Serial.println(millis() - start);
-    }
-    if (millis() - millix >= 25000)
-    {
-      MODE_AWAKE = false;
-      Serial.println(" A dormir");
-      rtc.updateTime();
-      Serial.println(rtc.stringTime());
-      delay(10);
-    }
+    start = millis();
+    uint8_t len = sizeof(buf);
+    manager.recvfromAck(buf, &len);
+    //listen_master(); //When activity is detected listen the master
+    //Serial.print("TIME DONE IN: ");
+    //Serial.println(millis() - start);
+    Serial.println("He recibido completamete: ");
+    for (int i = 0; i < sizeof(buf); i++)
+      Serial.write(buf[i]);
+    Serial.println(" ");
+
   }
+  //if (millis() - millix >= 25000)
+  //{
+  //  MODE_AWAKE = false;
+  //  Serial.println(" A dormir");
+  //  rtc.updateTime();
+  //  Serial.println(rtc.stringTime());
+  //  delay(10);
+  //}
+  // }
 
   if (!MODE_AWAKE)
   {
@@ -194,15 +199,15 @@ void loop()
     //lowPower.sleep_delay(1000);
   }
 
-  if (rtc_interrupt)
-  {
-    rtc_interrupt = false;
-    MODE_AWAKE = true;
-    rtc.updateTime();
-    Serial.println(rtc.stringTime());
-    Serial.println("AWAKE MODE");
-    millix = millis();
-  }
+  //if (rtc_interrupt)
+  //{
+  //  rtc_interrupt = false;
+  //  MODE_AWAKE = true;
+  //  rtc.updateTime();
+  //  Serial.println(rtc.stringTime());
+  //  Serial.println("AWAKE MODE");
+  //  millix = millis();
+  //}
 }
 void chargeCapacitor()
 {
@@ -376,7 +381,7 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 }
 void listen_master() // Listen and actuate in consideration
 {
-  //Serial.println("He recibido del master: ");
+  Serial.println("He recibido del master: ");
   // start = millis();
   uint8_t start_msg;
   bool is_for_me = false;
