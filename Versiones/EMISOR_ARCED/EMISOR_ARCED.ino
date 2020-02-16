@@ -59,7 +59,18 @@ typedef struct
   uint8_t start[6][2];
   uint16_t irrigTime[128];
 } program;
-
+#define MAX_NUM_MESSAGES 4
+typedef struct
+{                                        // This struct conteis the messages of radio that are going to be sent but the node is sleeping so it has to wait
+  bool request_MANUAL[MAX_NUM_MESSAGES]; // the max number of messages are 4
+  bool request_TIME[MAX_NUM_MESSAGES];
+  bool request_ASSIGNED_VALVES[MAX_NUM_MESSAGES];
+  bool request_STOP_ALL[MAX_NUM_MESSAGES];
+  bool request_FULL_MESSAGE[MAX_NUM_MESSAGES];
+  uint8_t num_message_flags;
+  uint8_t valve_info[3][MAX_NUM_MESSAGES];    //This info is for [num oasis,  tº hours , tºminutes]
+  uint8_t assigned_info[4][MAX_NUM_MESSAGES]; //This info is for assigned [num oasis, assig0, assig1, assig2, assig3]
+} radio_actions;
 typedef enum
 {
   REQUEST_MANVAL,
@@ -75,7 +86,7 @@ sysVar sys;
 RV1805 rtc;
 Sleep lowPower;
 SimpleTimer timerA, timerB, timerC, timerD, timerE, timerF, timerCheck;
-
+radio_actions radio_waitting_msg;
 SPIFlash flash(CS_M);
 program prog[TOTAL_PROG];
 SoftwareSerial softSerial(PG_RXD, PG_TXD);
@@ -103,7 +114,6 @@ bool comError[MAX_CHILD];
 char asignacion[] = {1, 2, 15, random(1, 127)};
 bool oasis_actions;
 uint32_t millix;
-bool valve_timer_on;
 uint8_t index_prog_A, index_prog_B, index_prog_C, index_prog_D, index_prog_E, index_prog_F;
 bool start_programA, start_programB, start_programC, start_programD, start_programE, start_programF;
 bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
@@ -154,6 +164,19 @@ void setup()
   //timer_check = timerCheck.setInterval(20000, check_time);
   for (i = 0; i < MAX_CHILD; i++)
     comError[i] = false;
+  radio_waitting_msg.num_message_flags = 0;
+  for (int i = 0; i < sizeof(data); i++)
+  {
+    data[i] = 'z';
+  }
+  for (int msg = 0; msg < MAX_NUM_MESSAGES; msg++)
+  {
+    radio_waitting_msg.request_MANUAL[msg] = false; // the max n
+    radio_waitting_msg.request_TIME[msg] = false;
+    radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
+    radio_waitting_msg.request_STOP_ALL[msg] = false;
+    radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
+  }
 }
 
 void loop()
@@ -169,7 +192,9 @@ void loop()
     uint8_t nodo_envio[16];
     if (a == 97)
     {
-      prepare_message();
+      Serial.println(millis());
+      prepare_message(); // This function spends 400ms to compleat
+      Serial.println(millis());
     }
   }
   /*
@@ -180,7 +205,32 @@ void loop()
   /*
   The ejecution of the programs in order. THIS PART IS A SAME AND I DO NOT CONSIDER RESPONSIBLE FOR THIS SHIT
   */
-  /*
+  if (!digitalRead(PCINT_PIN))
+  {
+    Serial.println("BUTTON PRESSED");
+    //send_nodo(UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+
+    getAllFromPG();
+    rtc.setAlarmMode(0);
+  }
+  if (intRtc)
+  {
+    intRtc = false;
+    rtc.updateTime();
+    Serial.println(rtc.stringTime());
+    oasis_actions = true;
+    millix = millis();
+  }
+  if (oasis_actions)
+  {
+    // Always the first message have to be sync
+    start = millis();
+    prepare_message(); // This function spends 400ms to compleat
+    Serial.print("FINNISH SENDDING IN: ");
+    Serial.println(millis() - start);
+    oasis_actions = false;
+  }
+
   if (start_programA)
   {
     if (prog[0].irrigTime[index_prog_A] != 255 && prog[0].irrigTime[index_prog_A] != 0)
@@ -202,7 +252,7 @@ void loop()
         hours_temp = 0;
         min_temp = prog[0].irrigTime[index_prog_A];
       }
-      send_nodo(1,UUID_1, REQUEST_MANVAL, index_prog_A + 1, hours_temp, min_temp, asignacion);
+      //send_nodo(1, UUID_1, REQUEST_MANVAL, index_prog_A + 1, hours_temp, min_temp, asignacion);
       start_programA = false;
     }
     else
@@ -237,7 +287,7 @@ void loop()
         hours_temp = 0;
         min_temp = prog[1].irrigTime[index_prog_B];
       }
-      send_nodo(1,UUID_1, REQUEST_MANVAL, index_prog_B + 1, hours_temp, min_temp, asignacion);
+      //send_nodo(1, UUID_1, REQUEST_MANVAL, index_prog_B + 1, hours_temp, min_temp, asignacion);
       start_programB = false;
     }
     else
@@ -273,7 +323,7 @@ void loop()
         hours_temp = 0;
         min_temp = prog[2].irrigTime[index_prog_C];
       }
-      send_nodo(1,UUID_1, REQUEST_MANVAL, index_prog_C + 1, hours_temp, min_temp, asignacion);
+      //send_nodo(1, UUID_1, REQUEST_MANVAL, index_prog_C + 1, hours_temp, min_temp, asignacion);
       start_programC = false;
     }
     else
@@ -309,7 +359,7 @@ void loop()
         hours_temp = 0;
         min_temp = prog[3].irrigTime[index_prog_D];
       }
-      send_nodo(1,UUID_1, REQUEST_MANVAL, index_prog_D + 1, hours_temp, min_temp, asignacion);
+      //send_nodo(1, UUID_1, REQUEST_MANVAL, index_prog_D + 1, hours_temp, min_temp, asignacion);
       start_programD = false;
     }
     else
@@ -345,7 +395,7 @@ void loop()
         hours_temp = 0;
         min_temp = prog[4].irrigTime[index_prog_E];
       }
-      send_nodo(1,UUID_1, REQUEST_MANVAL, index_prog_E + 1, hours_temp, min_temp, asignacion);
+      //send_nodo(1, UUID_1, REQUEST_MANVAL, index_prog_E + 1, hours_temp, min_temp, asignacion);
       start_programE = false;
     }
     else
@@ -381,7 +431,7 @@ void loop()
         hours_temp = 0;
         min_temp = prog[5].irrigTime[index_prog_F];
       }
-      send_nodo(1,UUID_1, REQUEST_MANVAL, index_prog_F + 1, hours_temp, min_temp, asignacion);
+      //send_nodo(1, UUID_1, REQUEST_MANVAL, index_prog_F + 1, hours_temp, min_temp, asignacion);
       start_programF = false;
     }
     else
@@ -395,55 +445,22 @@ void loop()
       Serial.println("TODO HA ACABADO YA - F");
     }
   }
-  */
   /*
   When the Serial Port of the PG is set I read what happend there ant act.
-  
-  if (!digitalRead(PCINT_PIN))
-  {
-    Serial.println("BUTTON PRESSED");
-    send_nodo(UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
-    //getAllFromPG();
-
-    rtc.setAlarmMode(0);
-  }
-  if (intRtc)
-  {
-    intRtc = false;
-    rtc.updateTime();
-    Serial.println(rtc.stringTime());
-    oasis_actions = true;
-    millix = millis();
-  }
-  if (oasis_actions)
-  {
-    // Always the first message have to be sync
-    start = millis();
-    send_nodo(UUID_1, REQUEST_FULL_MESSAGE, 0, 0, 0, asignacion);
-    //delay(1000);
-    //send_nodo(UUID_1, REQUEST_MANVAL, 121, 0, 0, asignacion);
-    //delay(tim_test);
-    //send_nodo(UUID_1, REQUEST_MANVAL, 122, 0, 0, asignacion);
-    //delay(tim_test);
-    //send_nodo(UUID_1, REQUEST_MANVAL, 123, 0, 0, asignacion);
-    Serial.print("FINNISH SENDDING IN: ");
-    Serial.println(millis() - start);
-    //delay(1000);
-    //if (millis() - millix > 2000)
-    oasis_actions = false;
-  }
-  //timerA.run();
-  //timerB.run();
-  //timerC.run();
-  //timerD.run();
-  //timerE.run();
-  //timerF.run();
-  //timerCheck.run();
   */
+  timerA.run();
+  timerB.run();
+  timerC.run();
+  timerD.run();
+  timerE.run();
+  timerF.run();
+  timerCheck.run();
 }
 void prepare_message()
 {
-  uint8_t long_message[30]; // = "_1581603360_XNX_##STOP#ALL#00_X_##ASIGNED#000#000:000:000:000#00_X_##MANVAL#000#00:00#00_X_##STOP#ALL#00";
+  uint8_t long_message[23]; // = "_1581603360_XNX_##STOP#ALL#00_X_##ASIGNED#000#000:000:000:000#00_X_##MANVAL#000#00:00#00_X_##STOP#ALL#00";
+  for (int i = 0; i < sizeof(data); i++)
+    data[i] = 'z';
 
   // First obtein the timestamp and save to DATA radio
   String timestamp = String(rtc.getTimestamp()); // from string I convert to char[]
@@ -452,7 +469,7 @@ void prepare_message()
   long_message[index] = '_';
   for (index = 1; index < timestamp.length() + 1; index++)
     long_message[index] = timestamp.charAt(index - 1);
-  long_message[++index] = '_';
+  long_message[index++] = '_';
 
   //Second implement a system for adding more messages to DATA radio
   //The possibilities are:
@@ -461,27 +478,41 @@ void prepare_message()
   //##STOP#ALL#00
 
   //2.1 add the numbers of messages sent: from 0 to 4
-  long_message[++index] = 'X';
-  long_message[++index] = '1';
-  long_message[++index] = 'X';
-  long_message[++index] = '_';
-
+  //long_message[++index] = 'X';
+  //long_message[++index] = '1';
+  //long_message[++index] = 'X';
+  //long_message[++index] = '_';
+  //index++;
   //I just copy the buffer to data radio and send it
   memcpy(data, long_message, sizeof(long_message));
 
   //2.2 introduce the messages:
-  send_nodo(++index, UUID_1, REQUEST_MANUAL, 2, 1, 33, asignacion);
-  send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, 3, 4, 22, asignacion);
-  send_nodo(index, UUID_1, REQUEST_STOP_ALL, 3, 4, 22, asignacion);
-  send_nodo(index, UUID_1, REQUEST_MANVAL, 3, 4, 22, asignacion);
+  for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++)
+  {
 
+    if (radio_waitting_msg.request_MANUAL[msg])
+    {
+      send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
+      radio_waitting_msg.request_MANUAL[msg] = false;
+    }
+    else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
+    {
+      char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
+      send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
+      radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
+    }
+    else if (radio_waitting_msg.request_STOP_ALL[msg])
+    {
+      send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
+      radio_waitting_msg.request_STOP_ALL[msg] = false;
+    }
+  }
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
 }
-/*
 void check_time()
 {
- 
-  //I sleep the device for the first 
+
+  //I sleep the device for the first
 
   Serial.print("check_time: ");
   rtc.updateTime();
@@ -577,7 +608,7 @@ void waitValveCloseA()
 {
   Serial.print("CLOSE V");
   Serial.println(index_prog_A + 1);
-  send_nodo(UUID_1, REQUEST_MANVAL, index_prog_A + 1, 0, 0, asignacion);
+  //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_A + 1, 0, 0, asignacion);
   delay(1000);
   index_prog_A++;
   start_programA = true;
@@ -586,7 +617,7 @@ void waitValveCloseB()
 {
   Serial.print("CLOSE V");
   Serial.println(index_prog_B + 1);
-  send_nodo(UUID_1, REQUEST_MANVAL, index_prog_B + 1, 0, 0, asignacion);
+  //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_B + 1, 0, 0, asignacion);
   delay(1000);
   index_prog_B++;
   start_programB = true;
@@ -595,7 +626,7 @@ void waitValveCloseC()
 {
   Serial.print("CLOSE V");
   Serial.println(index_prog_C + 1);
-  send_nodo(UUID_1, REQUEST_MANVAL, index_prog_C + 1, 0, 0, asignacion);
+  //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_C + 1, 0, 0, asignacion);
   delay(1000);
   index_prog_C++;
   start_programC = true;
@@ -604,7 +635,7 @@ void waitValveCloseD()
 {
   Serial.print("CLOSE V");
   Serial.println(index_prog_D + 1);
-  send_nodo(UUID_1, REQUEST_MANVAL, index_prog_D + 1, 0, 0, asignacion);
+  //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_D + 1, 0, 0, asignacion);
   delay(1000);
   index_prog_D++;
   start_programD = true;
@@ -613,7 +644,7 @@ void waitValveCloseE()
 {
   Serial.print("CLOSE V");
   Serial.println(index_prog_E + 1);
-  send_nodo(UUID_1, REQUEST_MANVAL, index_prog_E + 1, 0, 0, asignacion);
+  //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_E + 1, 0, 0, asignacion);
   delay(1000);
   index_prog_E++;
   start_programE = true;
@@ -622,12 +653,12 @@ void waitValveCloseF()
 {
   Serial.print("CLOSE V");
   Serial.println(index_prog_F + 1);
-  send_nodo(UUID_1, REQUEST_MANVAL, index_prog_F + 1, 0, 0, asignacion);
+  //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_F + 1, 0, 0, asignacion);
   delay(1000);
   index_prog_F++;
   start_programF = true;
 }
-*/
+
 /*******************************************************************   functions     ************************************************************************************/
 void send_nodo(uint8_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
 {
@@ -809,7 +840,7 @@ void write_flash()
     Serial.println(" ");
   }
 }
-void listen_nodo()
+void listen_nodo() // if the oasis send something i listen
 {
   Serial.println("");
   Serial.println("He recibido de nodos:");
@@ -818,17 +849,11 @@ void listen_nodo()
   for (uint8_t i = 0; i < 70; i++) //loop from the buffer looking for the end of message
     Serial.write(buf[i]);
 }
-/*
-  this callback funtion is called when rtc interrupt is triggered
-*/
-void rtcInt()
+void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
   intRtc = true; //set flag to indicate that rtc interrupt was triggered
 }
-/*
-  this function read memmory in a given range of address - It is not changed
-*/
-void memmoryHandler(uint8_t pos, bool sendChange)
+void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory in a given range of address - It is not changed
 {
 
   int index;
@@ -979,10 +1004,7 @@ void memmoryHandler(uint8_t pos, bool sendChange)
     checkComError(i);
   }
 }
-/*
-  this function get all data from PG
-*/
-void getAllFromPG()
+void getAllFromPG() //this function get all data from PG
 {
   bool defined;
   uint8_t i, m, n, v;
@@ -1063,11 +1085,7 @@ void getAllFromPG()
   ;
   digitalWrite(CS_RF, LOW);
 }
-/*
-  this function get PG date and time
-*/
-
-bool sendCommand(uint8_t data[], uint8_t len, uint8_t id)
+bool sendCommand(uint8_t data[], uint8_t len, uint8_t id) //this function get PG date and time
 {
 
   bool ack;
@@ -1172,7 +1190,6 @@ void pgCommand(uint8_t command[], uint8_t len)
   }
   pgData[i - 1] = '\0';
 }
-
 void emiter_to_sleep()
 {
   digitalWrite(CS_RF, HIGH);
@@ -1221,6 +1238,19 @@ void listening_pg()
       Serial.print(" horas - ");
       Serial.print(valve_time_min);
       Serial.println(" minutos. ");
+
+      //I set a flag, when the time of waking up starts all the messages
+      radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
+      radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number;
+      radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = valve_time_hour;
+      radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags] = valve_time_min;
+
+      Serial.println("El valor de la radio waitting ha cambiado");
+      Serial.println(radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags]);
+      Serial.println(radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags]);
+      Serial.println(radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags]);
+
+      radio_waitting_msg.num_message_flags++;
       //send_nodo(1, UUID_1, REQUEST_MANUAL, valve_number, valve_time_hour, valve_time_min, asignacion);
     }
     else if (pg.indexOf("MANPRG START#") > 0)
@@ -1263,6 +1293,7 @@ void listening_pg()
       start_programC_ones = false;
       start_programD = false;
       start_programD_ones = false;
+      radio_waitting_msg.request_STOP_ALL[radio_waitting_msg.num_message_flags++] = true;
       //send_nodo(1, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
     }
     else if (pg.indexOf("SET TIME#") > 0)
@@ -1306,13 +1337,24 @@ void listening_pg()
       {
         valve_assigned = getValue(getValue(pg, '#', 2), ' ', k);
         oasis_valves[k] = (int)strtol(&valve_assigned[0], NULL, 16);
-        Serial.println(oasis_valves[k]);
+        //Serial.println(oasis_valves[k]);
       }
       temp_valve[0] = (char)oasis_valves[0];
       temp_valve[1] = (char)oasis_valves[1];
       temp_valve[2] = (char)oasis_valves[2];
       temp_valve[3] = (char)oasis_valves[3];
 
+      //I set the flag for sendding the messages:
+
+      radio_waitting_msg.request_ASSIGNED_VALVES[radio_waitting_msg.num_message_flags] = true;
+      radio_waitting_msg.assigned_info[0][radio_waitting_msg.num_message_flags] = (char)valve_number_true;
+      radio_waitting_msg.assigned_info[1][radio_waitting_msg.num_message_flags] = temp_valve[0];
+      radio_waitting_msg.assigned_info[2][radio_waitting_msg.num_message_flags] = temp_valve[1];
+      radio_waitting_msg.assigned_info[3][radio_waitting_msg.num_message_flags] = temp_valve[2];
+      radio_waitting_msg.assigned_info[4][radio_waitting_msg.num_message_flags] = temp_valve[3];
+      for (uint8_t k = 0; k < 5; k++)
+        Serial.println(radio_waitting_msg.assigned_info[k][radio_waitting_msg.num_message_flags]);
+      radio_waitting_msg.num_message_flags++;
       //send_nodo(1, UUID_1, REQUEST_ASSIGNED_VALVES, valve_number_true + 1, 0, 0, temp_valve);
     }
     else if (pg.indexOf("SELECTOR#00") > 0)

@@ -174,14 +174,13 @@ void loop()
     start = millis();
     uint8_t len = sizeof(buf);
     manager.recvfromAck(buf, &len);
-    //listen_master(); //When activity is detected listen the master
+    listen_master(); //When activity is detected listen the master
     //Serial.print("TIME DONE IN: ");
     //Serial.println(millis() - start);
     Serial.println("He recibido completamete: ");
     for (int i = 0; i < sizeof(buf); i++)
       Serial.write(buf[i]);
     Serial.println(" ");
-
   }
   //if (millis() - millix >= 25000)
   //{
@@ -385,15 +384,24 @@ void listen_master() // Listen and actuate in consideration
   // start = millis();
   uint8_t start_msg;
   bool is_for_me = false;
-
+  char timestamp_array[] = "1581874380";
   for (int i = 0; i < sizeof(buf); i++)
   {
     Serial.write(buf[i]);
     if (buf[i] == '#')
       if (buf[i + 1] == '#')
         start_msg = i + 2;
+    if (i > 0 && i < 11)
+      timestamp_array[i - 1] = (char)buf[i];
   }
   Serial.println(" ");
+  String timestamp_str = String(timestamp_array);
+  Serial.println(timestamp_str);
+  uint32_t timestamp_master;
+  //timestamp_master = (timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[7] << 24 | timestamp_array[8] << 16 | timestamp_array[9] << 8 | timestamp_array[10]);
+  
+  //Serial.println(timestamp_master);
+
   //I clasified the message received:
   switch (buf[start_msg])
   {
