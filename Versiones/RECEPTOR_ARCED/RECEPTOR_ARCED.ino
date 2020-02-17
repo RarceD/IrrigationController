@@ -228,10 +228,7 @@ void chargeCapacitor()
     lowPower.sleep_delay(16);
   }
 }
-/*
-  this function return battery level
-*/
-uint8_t batLevel()
+uint8_t batLevel() // return the battery level
 {
   float res;
   uint8_t a;
@@ -251,9 +248,6 @@ uint8_t batLevel()
     res = 100;
   return (res);
 }
-/*
-  this function open or close a valve
-*/
 void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 {
 
@@ -382,210 +376,206 @@ void listen_master() // Listen and actuate in consideration
 {
   Serial.println("He recibido del master: ");
   // start = millis();
-  uint8_t start_msg;
-  bool is_for_me = false;
+  uint8_t start_msg_letter[] = "AAAA"; //The max number of messages in buffer is 4 because why not?
   char timestamp_array[] = "1581874380";
+  uint8_t index_start_msg = 0;
+
+  // I first find the number of msg and the position of the first letter of them
+  // I save them on start_msg_letter[]
+
   for (int i = 0; i < sizeof(buf); i++)
   {
-    Serial.write(buf[i]);
     if (buf[i] == '#')
       if (buf[i + 1] == '#')
-        start_msg = i + 2;
+        start_msg_letter[index_start_msg++] = i + 2; // I find the number of messages in the buffer and also the position of start
     if (i > 0 && i < 11)
       timestamp_array[i - 1] = (char)buf[i];
   }
-  Serial.println(" ");
-  String timestamp_str = String(timestamp_array);
-  Serial.println(timestamp_str);
-  uint32_t timestamp_master;
+  Serial.println("  ");
+  Serial.print("The number of messages is: ");
+  Serial.println(index_start_msg);
+
+  //String timestamp_str = String(timestamp_array);
+  //Serial.println(timestamp_str);
+  //uint32_t timestamp_master;
   //timestamp_master = (timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[7] << 24 | timestamp_array[8] << 16 | timestamp_array[9] << 8 | timestamp_array[10]);
-  
+
   //Serial.println(timestamp_master);
+  bool is_for_me = false;
 
-  //I clasified the message received:
-  switch (buf[start_msg])
+  // I execute all the actions saved in the buffer start_msg_letter[]
+  while (index_start_msg > 0)
   {
-  case MANVAL_MSG:
-    //Serial.println("VALVE ACTION");
-    valve_flag = true;
-    break;
-  case TIME_MSG:
-    //Serial.println("TIME MODE");
-    //send_master(ACK);
-    time_flag = true;
-    break;
-  case ASSIGNED_MSG:
-    //Serial.println("ASSIGNED MODE");
-    //send_master(ACK);
-    assigned_flag = true;
-    break;
-  case STOP_MSG:
-    //Serial.println("STOP MODE");
-    stop_flag = true;
-    break;
-  default:
-    Serial.println("NO TIENE QUE SALIR");
-  }
-  if (time_flag)
-  {
-    time_flag = false;
-    //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/ ";
-    //uint8_t sead[] = "01234567890  12345678 9012345 67890";
-    int hours, minutes, day, month, year, seconds;
-    if (buf[9] == '0')
-      hours = buf[10] - '0';
-    else
-      hours = (buf[9] - '0') * 10 + (buf[10] - '0');
-
-    if (buf[14] == '0')
-      minutes = buf[15] - '0';
-    else
-      minutes = (buf[14] - '0') * 10 + (buf[15] - '0');
-
-    if (buf[19] == '0')
-      seconds = buf[20] - '0';
-    else
-      seconds = (buf[19] - '0') * 10 + (buf[20] - '0');
-
-    if (buf[24] == '0')
-      day = buf[25] - '0';
-    else
-      day = (buf[24] - '0') * 10 + (buf[25] - '0');
-
-    if (buf[29] == '0')
-      month = buf[30] - '0';
-    else
-      month = (buf[29] - '0') * 10 + (buf[30] - '0');
-    if (seconds < 53)
-      seconds += 7;
-
-    change_time(hours, minutes, day, month, seconds, 2020);
-    rtc.setAlarmMode(6);
-    rtc.setAlarm(0, 0, 0, 0, 0);
-  }
-  else if (valve_flag)
-  {
-    //##MANVAL#002#00:10#A1#MAN
-    valve_flag = false;
-    if (buf[19] == sys.master_id[0] && buf[20] == sys.master_id[1])
+    Serial.print("The letter of the msg is: ");
+    Serial.write(buf[start_msg_letter[index_start_msg - 1]]);
+    Serial.println("  ");
+    switch (buf[start_msg_letter[--index_start_msg]])
     {
-      uint8_t valve_action = (buf[9] - '0') * 100 + (buf[10] - '0') * 10 + (buf[11] - '0');
-      uint8_t valve_time_hours = (buf[13] - '0') * 10 + (buf[14] - '0');
-      uint8_t valve_time_minutes = (buf[13 + 3] - '0') * 10 + (buf[14 + 3] - '0');
-      //Serial.print("Valve action: ");
-      //Serial.print(valve_action);
-      //Serial.print(" time: ");
-      //Serial.print(valve_time_hours);
-      //Serial.print(":");
-      //Serial.print(valve_time_minutes);
-
-      for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
+    case MANVAL_MSG:
+    {
+      Serial.println("VALVE ACTION");
+      //##MANVAL#002#00:10#A1#MAN
+      if (buf[19] == sys.master_id[0] && buf[20] == sys.master_id[1])
       {
-        if (sys.assigned_output[i] == valve_action)
+        uint8_t valve_action = (buf[9] - '0') * 100 + (buf[10] - '0') * 10 + (buf[11] - '0');
+        uint8_t valve_time_hours = (buf[13] - '0') * 10 + (buf[14] - '0');
+        uint8_t valve_time_minutes = (buf[13 + 3] - '0') * 10 + (buf[14 + 3] - '0');
+        //Serial.print("Valve action: ");
+        //Serial.print(valve_action);
+        //Serial.print(" time: ");
+        //Serial.print(valve_time_hours);
+        //Serial.print(":");
+        //Serial.print(valve_time_minutes);
+
+        for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
         {
-          if (buf[22] == 'M' && buf[23] == 'A')
+          if (sys.assigned_output[i] == valve_action)
           {
-            Serial.println("Is for me MANUAL, setting a timer ");
-            //if (i == 0)
-            //{
-            //  timer_manual_valve_1.deleteTimer(timer_manual_1);
-            //  timer_manual_1 = timer_manual_valve_1.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_1);
-            //}
-            //else if (i == 1)
-            //{
-            //  timer_manual_valve_2.deleteTimer(timer_manual_2);
-            //  timer_manual_2 = timer_manual_valve_2.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_2);
-            //}
-            //else if (i == 2)
-            //{
-            //  timer_manual_valve_3.deleteTimer(timer_manual_3);
-            //  timer_manual_3 = timer_manual_valve_3.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_3);
-            //}
-            //else if (i == 3)
-            //{
-            //  timer_manual_valve_4.deleteTimer(timer_manual_4);
-            //  timer_manual_4 = timer_manual_valve_4.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_4);
-            //}
-            valveAction(i + 1, true);
-            break;
-            // I set a timer up due to it is a manual pulse:
-          }
-          else
-          {
-            Serial.println("Is for me AUTO: ");
-            if (valve_time_hours == 0 && valve_time_minutes == 0)
-              valveAction(i + 1, false);
-            else
+            if (buf[22] == 'M' && buf[23] == 'A')
+            {
+              Serial.println("Is for me MANUAL, setting a timer ");
+              //if (i == 0)
+              //{
+              //  timer_manual_valve_1.deleteTimer(timer_manual_1);
+              //  timer_manual_1 = timer_manual_valve_1.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_1);
+              //}
+              //else if (i == 1)
+              //{
+              //  timer_manual_valve_2.deleteTimer(timer_manual_2);
+              //  timer_manual_2 = timer_manual_valve_2.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_2);
+              //}
+              //else if (i == 2)
+              //{
+              //  timer_manual_valve_3.deleteTimer(timer_manual_3);
+              //  timer_manual_3 = timer_manual_valve_3.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_3);
+              //}
+              //else if (i == 3)
+              //{
+              //  timer_manual_valve_4.deleteTimer(timer_manual_4);
+              //  timer_manual_4 = timer_manual_valve_4.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_4);
+              //}
               valveAction(i + 1, true);
+              break;
+              // I set a timer up due to it is a manual pulse:
+            }
+            else
+            {
+              Serial.println("Is for me AUTO: ");
+              if (valve_time_hours == 0 && valve_time_minutes == 0)
+                valveAction(i + 1, false);
+              else
+                valveAction(i + 1, true);
+            }
           }
         }
       }
+      break;
     }
-  }
-  else if (assigned_flag)
-  {
-    //##ASIGNED#720#045:099:004:035#00
-    assigned_flag = false;
-    Serial.println("");
-    Serial.println("");
-    uint8_t id_msg = (buf[10] - '0') * 100 + (buf[11] - '0') * 10 + (buf[12] - '0');
-    uint8_t out[4];
-    uint8_t offset_msg = 0;
-    //  I test if the message is for me checking the unique ID
-    // This only is used when the assignation message is sent
-    if (sys.id == id_msg && buf[30] == sys.master_id[0] && buf[31] == sys.master_id[1])
-      is_for_me = true;
-    else
-      is_for_me = false;
-    Serial.print("Assigned done in id: ");
-    Serial.print(id_msg);
-    Serial.print(" outputs: ");
-    for (uint8_t msg_index = 0; msg_index < 4; msg_index++, offset_msg += 4)
+    case TIME_MSG:
     {
-      out[msg_index] = (buf[start_msg + 8 + 4 + offset_msg] - '0') * 100 + (buf[start_msg + 9 + 4 + offset_msg] - '0') * 10 + (buf[start_msg + 10 + 4 + offset_msg] - '0');
-      Serial.print(out[msg_index] + 1);
-      Serial.print(" ");
-    }
-    if (is_for_me)
-    {
-      Serial.println("Es para mi, hago la asignación");
-      sys.assigned_output[0] = out[0] + 1;
-      sys.assigned_output[1] = out[1] + 1;
-      sys.assigned_output[2] = out[2] + 1;
-      sys.assigned_output[3] = out[3] + 1;
+      //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/ ";
+      //uint8_t sead[] = "01234567890  12345678 9012345 67890";
+      int hours, minutes, day, month, year, seconds;
+      if (buf[9] == '0')
+        hours = buf[10] - '0';
+      else
+        hours = (buf[9] - '0') * 10 + (buf[10] - '0');
 
-      digitalWrite(CS_RF, HIGH); //unselect rf
-      flash.eraseSector(FLASH_SYS_DIR);
-      flash.writeAnything(FLASH_SYS_DIR, sys);
-      digitalWrite(CS_RF, LOW);
-    }
-  }
-  else if (stop_flag)
-  {
-    stop_flag = false;
-    //##STOP#ALL#00
-    if (buf[11] == sys.master_id[0] && buf[12] == sys.master_id[1])
-    {
-      valveAction(1, false);
-      delay(1200);
-      valveAction(2, false);
-      delay(1200);
-      valveAction(3, false);
-      delay(1200);
-      valveAction(4, false);
-    }
-    else
-    {
-      Serial.println(buf[11]);
-      Serial.println(buf[12]);
-    }
-  }
-  else
-  {
-    Serial.println("no tiene que salir");
-  }
+      if (buf[14] == '0')
+        minutes = buf[15] - '0';
+      else
+        minutes = (buf[14] - '0') * 10 + (buf[15] - '0');
 
-  //Serial.println(millis() - start);
+      if (buf[19] == '0')
+        seconds = buf[20] - '0';
+      else
+        seconds = (buf[19] - '0') * 10 + (buf[20] - '0');
+
+      if (buf[24] == '0')
+        day = buf[25] - '0';
+      else
+        day = (buf[24] - '0') * 10 + (buf[25] - '0');
+
+      if (buf[29] == '0')
+        month = buf[30] - '0';
+      else
+        month = (buf[29] - '0') * 10 + (buf[30] - '0');
+      if (seconds < 53)
+        seconds += 7;
+
+      change_time(hours, minutes, day, month, seconds, 2020);
+      rtc.setAlarmMode(6);
+      rtc.setAlarm(0, 0, 0, 0, 0);
+      break;
+    }
+    case ASSIGNED_MSG:
+    {
+      Serial.println("ASSIGNED IN PROGRESS");
+
+      //##ASIGNED#720#045:099:004:035#00
+      //Serial.println("");
+      //Serial.println("");
+      uint8_t id_msg = (buf[10] - '0') * 100 + (buf[11] - '0') * 10 + (buf[12] - '0');
+      uint8_t out[4];
+      uint8_t offset_msg = 0;
+      //  I test if the message is for me checking the unique ID
+      // This only is used when the assignation message is sent
+      if (sys.id == id_msg && buf[30] == sys.master_id[0] && buf[31] == sys.master_id[1])
+        is_for_me = true;
+      else
+        is_for_me = false;
+      Serial.print("Assigned done in id: ");
+      Serial.print(id_msg);
+      Serial.print(" outputs: ");
+      //for (uint8_t msg_index = 0; msg_index < 4; msg_index++, offset_msg += 4)
+      //{
+      //  out[msg_index] = (buf[start_msg_letter + 8 + 4 + offset_msg] - '0') * 100 + (buf[start_msg_letter + 9 + 4 + offset_msg] - '0') * 10 + (buf[start_msg_letter + 10 + 4 + offset_msg] - '0');
+      //  Serial.print(out[msg_index] + 1);
+      //  Serial.print(" ");
+      //}
+      if (is_for_me)
+      {
+        Serial.println("Es para mi, hago la asignación");
+        sys.assigned_output[0] = out[0] + 1;
+        sys.assigned_output[1] = out[1] + 1;
+        sys.assigned_output[2] = out[2] + 1;
+        sys.assigned_output[3] = out[3] + 1;
+
+        digitalWrite(CS_RF, HIGH); //unselect rf
+        flash.eraseSector(FLASH_SYS_DIR);
+        flash.writeAnything(FLASH_SYS_DIR, sys);
+        digitalWrite(CS_RF, LOW);
+      }
+      break;
+    }
+    case STOP_MSG:
+    {
+      stop_flag = false;
+      //##STOP#ALL#00
+      if (buf[11] == sys.master_id[0] && buf[12] == sys.master_id[1])
+      {
+        valveAction(1, false);
+        delay(1200);
+        valveAction(2, false);
+        delay(1200);
+        valveAction(3, false);
+        delay(1200);
+        valveAction(4, false);
+      }
+      else
+      {
+        Serial.println(buf[11]);
+        Serial.println(buf[12]);
+      }
+      stop_flag = true;
+      break;
+    }
+    default:
+      Serial.println("NO TIENE QUE SALIR");
+
+      //index_start_msg--;
+    }
+  }
 }
 void send_master(uint8_t msg)
 {
@@ -635,6 +625,7 @@ void rtcInt()
 {
   Serial.println("RTC_INT");
   rtc_interrupt = true;
+  //change_time(8, 7, 17, 2, 10, 20);  //rtc.setTime(0, 10, 6, 20, 17, 2, 20, 1);
 }
 void buttonInt()
 {

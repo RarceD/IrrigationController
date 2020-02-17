@@ -458,7 +458,7 @@ void loop()
 }
 void prepare_message()
 {
-  uint8_t long_message[23]; // = "_1581603360_XNX_##STOP#ALL#00_X_##ASIGNED#000#000:000:000:000#00_X_##MANVAL#000#00:00#00_X_##STOP#ALL#00";
+  uint8_t long_message[16]; // = "_1581603360_XNX_##STOP#ALL#00_X_##ASIGNED#000#000:000:000:000#00_X_##MANVAL#000#00:00#00_X_##STOP#ALL#00";
   for (int i = 0; i < sizeof(data); i++)
     data[i] = 'z';
 
@@ -477,12 +477,23 @@ void prepare_message()
   //##MANVAL#000#00:00#00
   //##STOP#ALL#00
 
+  uint8_t msg_number = 0, msg_position = 0;
   //2.1 add the numbers of messages sent: from 0 to 4
-  //long_message[++index] = 'X';
-  //long_message[++index] = '1';
-  //long_message[++index] = 'X';
-  //long_message[++index] = '_';
+  /*
+  long_message[++index] = 'X';
+  long_message[++index] = '0';
+
+  msg_number = (uint8_t)long_message[index];
+  msg_position = index;
+  Serial.println(msg_number);
+  Serial.println(msg_position);
+
+  long_message[++index] = 'X';
+  long_message[++index] = '_';
+  
+  */
   //index++;
+
   //I just copy the buffer to data radio and send it
   memcpy(data, long_message, sizeof(long_message));
 
@@ -493,18 +504,18 @@ void prepare_message()
     if (radio_waitting_msg.request_MANUAL[msg])
     {
       send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
-      radio_waitting_msg.request_MANUAL[msg] = false;
+      //radio_waitting_msg.request_MANUAL[msg] = false;
     }
     else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
     {
       char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
       send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
-      radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
+      //radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
     }
     else if (radio_waitting_msg.request_STOP_ALL[msg])
     {
       send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
-      radio_waitting_msg.request_STOP_ALL[msg] = false;
+      //radio_waitting_msg.request_STOP_ALL[msg] = false;
     }
   }
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
