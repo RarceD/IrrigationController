@@ -119,6 +119,7 @@ bool start_programA, start_programB, start_programC, start_programD, start_progr
 bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
 
 uint32_t start = 0;
+uint8_t counter_syn = 0;
 /******************************************************************* setup section ************************************************************************************/
 void setup()
 {
@@ -193,7 +194,9 @@ void loop()
     if (a == 97)
     {
       Serial.println(millis());
+      counter_syn = 5;
       prepare_message(); // This function spends 400ms to compleat
+    
       Serial.println(millis());
     }
   }
@@ -208,16 +211,14 @@ void loop()
   if (!digitalRead(PCINT_PIN))
   {
     Serial.println("BUTTON PRESSED");
-    //send_nodo(UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
-
     getAllFromPG();
-    rtc.setAlarmMode(0);
   }
-  if (intRtc)
+  if (intRtc) // I wake up at 00 seconds just for
   {
     intRtc = false;
-    rtc.updateTime();
-    Serial.println(rtc.stringTime());
+    //rtc.updateTime();
+    //Serial.println(rtc.stringTime());
+    Serial.println("WAKE UP NODO");
     oasis_actions = true;
     millix = millis();
   }
@@ -225,6 +226,7 @@ void loop()
   {
     // Always the first message have to be sync
     start = millis();
+    counter_syn++;
     prepare_message(); // This function spends 400ms to compleat
     Serial.print("FINNISH SENDDING IN: ");
     Serial.println(millis() - start);
@@ -465,7 +467,6 @@ void prepare_message()
   // First obtein the timestamp and save to DATA radio
   String timestamp = String(rtc.getTimestamp()); // from string I convert to char[]
   uint8_t index = 0;
-  Serial.println(timestamp);
   long_message[index] = '_';
   for (index = 1; index < timestamp.length() + 1; index++)
     long_message[index] = timestamp.charAt(index - 1);
@@ -478,25 +479,13 @@ void prepare_message()
   //##STOP#ALL#00
 
   uint8_t msg_number = 0, msg_position = 0;
-  //2.1 add the numbers of messages sent: from 0 to 4
-  /*
-  long_message[++index] = 'X';
-  long_message[++index] = '0';
-
-  msg_number = (uint8_t)long_message[index];
-  msg_position = index;
-  Serial.println(msg_number);
-  Serial.println(msg_position);
-
-  long_message[++index] = 'X';
-  long_message[++index] = '_';
-  
-  */
-  //index++;
-
   //I just copy the buffer to data radio and send it
   memcpy(data, long_message, sizeof(long_message));
-  send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+  if (counter_syn >= 5)
+  {
+    counter_syn = 0;
+    send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+  }
   //2.2 introduce the messages:
   for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++)
   {

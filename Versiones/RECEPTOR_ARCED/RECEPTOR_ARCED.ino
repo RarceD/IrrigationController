@@ -36,7 +36,6 @@
 #define TIME_RESPONSE_NODE 1000
 
 #define FLASH_SYS_DIR 0x040400
-
 typedef enum
 {
   MANVAL_MSG = 'M',
@@ -50,7 +49,6 @@ typedef enum
   FAULT,
   SENSORS
 } msg_send;
-
 typedef struct
 {
   uint8_t id;                 // This is the unique ID, there are 250 units so we can fix this number for identify the net
@@ -131,13 +129,9 @@ void setup()
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
   // rtc.setAlarmMode(0);
-
   rtc.setAlarmMode(6);
   rtc.setAlarm(0, 0, 0, 0, 0);
-  //rtc.disableInterrupt(6);
-
   // For disable the interrupt : //rtc.setAlarmMode(0);
-
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   attachPCINT(digitalPinToPCINT(SW_SETUP), buttonInt, FALLING);
   chargeCapacitor();
@@ -151,10 +145,8 @@ void setup()
 }
 /******************************************************************* main program  ************************************************************************************/
 bool MODE_AWAKE;
-bool MODE_SLEEP;
 void loop()
 {
-
   if (Serial.available())
   {
     int a = Serial.read();
@@ -166,47 +158,45 @@ void loop()
       // rtc.setAlarm(0, 0, 0, 0, 0);
     }
   }
-
-  //if (MODE_AWAKE)
-  //{
-  if (manager.available()) // Detect radio activity
+  if (MODE_AWAKE)
   {
-    start = millis();
-    uint8_t len = sizeof(buf);
-    manager.recvfromAck(buf, &len);
-    listen_master(); //When activity is detected listen the master
-    //Serial.print("TIME DONE IN: ");
-    //Serial.println(millis() - start);
-    Serial.println("He recibido completamete: ");
-    for (int i = 0; i < sizeof(buf); i++)
-      Serial.write(buf[i]);
-    Serial.println(" ");
+    if (manager.available()) // Detect radio activity
+    {
+      start = millis();
+      uint8_t len = sizeof(buf);
+      manager.recvfromAck(buf, &len);
+      listen_master(); //When activity is detected listen the master
+      //Serial.print("TIME DONE IN: ");
+      //Serial.println(millis() - start);
+      Serial.println("He recibido completamete: ");
+      for (int i = 0; i < sizeof(buf); i++)
+        Serial.write(buf[i]);
+      Serial.println(" ");
+    }
+    if (millis() - millix >= 1500)
+    {
+      MODE_AWAKE = false;
+      Serial.println(" A dormir");
+      rtc.updateTime();
+      Serial.println(rtc.stringTime());
+      delay(10);
+    }
   }
-  //if (millis() - millix >= 25000)
-  //{
-  //  MODE_AWAKE = false;
-  //  Serial.println(" A dormir");
-  //  rtc.updateTime();
-  //  Serial.println(rtc.stringTime());
-  //  delay(10);
-  //}
-  // }
 
   if (!MODE_AWAKE)
   {
-    //driver.sleep();
-    //lowPower.sleep_delay(1000);
+    driver.sleep();
+    lowPower.sleep_delay(500);
   }
-
-  //if (rtc_interrupt)
-  //{
-  //  rtc_interrupt = false;
-  //  MODE_AWAKE = true;
-  //  rtc.updateTime();
-  //  Serial.println(rtc.stringTime());
-  //  Serial.println("AWAKE MODE");
-  //  millix = millis();
-  //}
+  if (rtc_interrupt)
+  {
+    rtc_interrupt = false;
+    MODE_AWAKE = true;
+    rtc.updateTime();
+    Serial.println(rtc.stringTime());
+    Serial.println("AWAKE MODE");
+    millix = millis();
+  }
 }
 void chargeCapacitor()
 {
@@ -399,11 +389,6 @@ void listen_master() // Listen and actuate in consideration
 
   // TO DO
 
-  //String timestamp_str = String(timestamp_array);
-  //Serial.println(timestamp_str);
-  //uint32_t timestamp_master;
-  //timestamp_master = (timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[0] << 24 | timestamp_array[7] << 24 | timestamp_array[8] << 16 | timestamp_array[9] << 8 | timestamp_array[10]);
-
   //Serial.println(timestamp_master);
   bool is_for_me = false;
   uint8_t buffer_index = 0; // This variable is for offset what I am doing
@@ -455,35 +440,36 @@ void listen_master() // Listen and actuate in consideration
     {
       //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/ ";
       //uint8_t sead[] = "01234567890  12345678 9012345 67890";
-      buffer_index = start_msg_letter[index_start_msg] + 9;
+      buffer_index = start_msg_letter[index_start_msg] + 8;
       int hours, minutes, day, month, year, seconds;
-      if (buf[buffer_index] == '0')
-        hours = buf[buffer_index + 1] - '0';
+      if (buf[buffer_index - 1] == '0')
+        hours = buf[buffer_index] - '0';
       else
-        hours = (buf[buffer_index] - '0') * 10 + (buf[buffer_index + 1] - '0');
-      Serial.println(hours);
-      if (buf[14] == '0')
-        minutes = buf[15] - '0';
+        hours = (buf[buffer_index - 1] - '0') * 10 + (buf[buffer_index] - '0');
+      if (buf[buffer_index + 4] == '0')
+        minutes = buf[buffer_index + 5] - '0';
       else
-        minutes = (buf[14] - '0') * 10 + (buf[15] - '0');
+        minutes = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
 
-      if (buf[19] == '0')
-        seconds = buf[20] - '0';
+      if (buf[buffer_index + 9] == '0')
+        seconds = buf[buffer_index + 10] - '0';
       else
-        seconds = (buf[19] - '0') * 10 + (buf[20] - '0');
+        seconds = (buf[buffer_index + 9] - '0') * 10 + (buf[buffer_index + 10] - '0');
+      Serial.write(buf[buffer_index + 10]);
+      Serial.println("unidades");
+      Serial.write(buf[buffer_index + 9]);
+      Serial.println("decenas");
 
-      if (buf[24] == '0')
-        day = buf[25] - '0';
+      if (buf[buffer_index + 14] == '0')
+        day = buf[buffer_index + 15] - '0';
       else
-        day = (buf[24] - '0') * 10 + (buf[25] - '0');
-
-      if (buf[29] == '0')
-        month = buf[30] - '0';
+        day = (buf[buffer_index + 14] - '0') * 10 + (buf[buffer_index + 15] - '0');
+      if (buf[buffer_index + 19] == '0')
+        month = buf[buffer_index + 20] - '0';
       else
-        month = (buf[29] - '0') * 10 + (buf[30] - '0');
+        month = (buf[buffer_index + 19] - '0') * 10 + (buf[buffer_index + 20] - '0');
       if (seconds < 53)
-        seconds += 7;
-
+        seconds -= 1;
       change_time(hours, minutes, day, month, seconds, 2020);
       rtc.setAlarmMode(6);
       rtc.setAlarm(0, 0, 0, 0, 0);
@@ -596,7 +582,7 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
   currentTime[6] = rtc.DECtoBCD(year - 2000);
   currentTime[7] = rtc.DECtoBCD(0);
   rtc.setTime(currentTime, TIME_ARRAY_LENGTH);
-  Serial.println("TIME CHANGE");
+  //Serial.println("TIME CHANGE");
   //Serial.print(rtc.stringDate());
   //Serial.print(" ");
   //Serial.println(rtc.stringTime());
@@ -619,8 +605,8 @@ void buttonInt()
   DPRINTLN("BUTTON PRESSED");
   //jam.ledBlink(LED_SETUP, 1000);
   //disable the interrupt just for always receiving the message
-  rtc.setAlarmMode(6);
-  rtc.setAlarm(0, 0, 0, 0, 0);
+  //rtc.setAlarmMode(6);
+  //rtc.setAlarm(0, 0, 0, 0, 0);
 }
 void print_flash()
 {
