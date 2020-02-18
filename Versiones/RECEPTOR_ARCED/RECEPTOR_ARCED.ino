@@ -395,6 +395,10 @@ void listen_master() // Listen and actuate in consideration
   Serial.print("The number of messages is: ");
   Serial.println(index_start_msg);
 
+  //I obtein the timestamp in an usefull way and then change the time:
+
+  // TO DO
+
   //String timestamp_str = String(timestamp_array);
   //Serial.println(timestamp_str);
   //uint32_t timestamp_master;
@@ -402,7 +406,7 @@ void listen_master() // Listen and actuate in consideration
 
   //Serial.println(timestamp_master);
   bool is_for_me = false;
-
+  uint8_t buffer_index = 0; // This variable is for offset what I am doing
   // I execute all the actions saved in the buffer start_msg_letter[]
   while (index_start_msg > 0)
   {
@@ -415,57 +419,33 @@ void listen_master() // Listen and actuate in consideration
     {
       Serial.println("VALVE ACTION");
       //##MANVAL#002#00:10#A1#MAN
-      if (buf[19] == sys.master_id[0] && buf[20] == sys.master_id[1])
+      //--012345678901234567890123456
+      Serial.write(buf[start_msg_letter[index_start_msg] + 7]);
+      Serial.write(buf[start_msg_letter[index_start_msg] + 9]);
+      Serial.println("");
+
+      if (buf[start_msg_letter[index_start_msg] + 17] == sys.master_id[0] && buf[start_msg_letter[index_start_msg] + 18])
       {
-        uint8_t valve_action = (buf[9] - '0') * 100 + (buf[10] - '0') * 10 + (buf[11] - '0');
-        uint8_t valve_time_hours = (buf[13] - '0') * 10 + (buf[14] - '0');
-        uint8_t valve_time_minutes = (buf[13 + 3] - '0') * 10 + (buf[14 + 3] - '0');
-        //Serial.print("Valve action: ");
-        //Serial.print(valve_action);
-        //Serial.print(" time: ");
-        //Serial.print(valve_time_hours);
-        //Serial.print(":");
-        //Serial.print(valve_time_minutes);
+        buffer_index = start_msg_letter[index_start_msg] + 7;
+        uint8_t valve_action = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0');
+        uint8_t valve_time_hours = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
+        uint8_t valve_time_minutes = (buf[buffer_index + 7] - '0') * 10 + (buf[buffer_index + 8] - '0');
+        Serial.print("Valve action: ");
+        Serial.print(valve_action);
+        Serial.print(" time: ");
+        Serial.print(valve_time_hours);
+        Serial.print(":");
+        Serial.println(valve_time_minutes);
 
         for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
         {
           if (sys.assigned_output[i] == valve_action)
           {
-            if (buf[22] == 'M' && buf[23] == 'A')
-            {
-              Serial.println("Is for me MANUAL, setting a timer ");
-              //if (i == 0)
-              //{
-              //  timer_manual_valve_1.deleteTimer(timer_manual_1);
-              //  timer_manual_1 = timer_manual_valve_1.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_1);
-              //}
-              //else if (i == 1)
-              //{
-              //  timer_manual_valve_2.deleteTimer(timer_manual_2);
-              //  timer_manual_2 = timer_manual_valve_2.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_2);
-              //}
-              //else if (i == 2)
-              //{
-              //  timer_manual_valve_3.deleteTimer(timer_manual_3);
-              //  timer_manual_3 = timer_manual_valve_3.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_3);
-              //}
-              //else if (i == 3)
-              //{
-              //  timer_manual_valve_4.deleteTimer(timer_manual_4);
-              //  timer_manual_4 = timer_manual_valve_4.setInterval(valve_time_hours * 60000 * 60 + valve_time_minutes * 60000, manual_stop_timer_4);
-              //}
-              valveAction(i + 1, true);
-              break;
-              // I set a timer up due to it is a manual pulse:
-            }
+            Serial.println("This valve is in my options ");
+            if (valve_time_hours == 0 && valve_time_minutes == 0)
+              valveAction(i + 1, false);
             else
-            {
-              Serial.println("Is for me AUTO: ");
-              if (valve_time_hours == 0 && valve_time_minutes == 0)
-                valveAction(i + 1, false);
-              else
-                valveAction(i + 1, true);
-            }
+              valveAction(i + 1, true);
           }
         }
       }
@@ -475,12 +455,13 @@ void listen_master() // Listen and actuate in consideration
     {
       //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/ ";
       //uint8_t sead[] = "01234567890  12345678 9012345 67890";
+      buffer_index = start_msg_letter[index_start_msg] + 9;
       int hours, minutes, day, month, year, seconds;
-      if (buf[9] == '0')
-        hours = buf[10] - '0';
+      if (buf[buffer_index] == '0')
+        hours = buf[buffer_index + 1] - '0';
       else
-        hours = (buf[9] - '0') * 10 + (buf[10] - '0');
-
+        hours = (buf[buffer_index] - '0') * 10 + (buf[buffer_index + 1] - '0');
+      Serial.println(hours);
       if (buf[14] == '0')
         minutes = buf[15] - '0';
       else
@@ -513,26 +494,31 @@ void listen_master() // Listen and actuate in consideration
       Serial.println("ASSIGNED IN PROGRESS");
 
       //##ASIGNED#720#045:099:004:035#00
+      buffer_index = start_msg_letter[index_start_msg] + 8;
+      Serial.write(buf[buffer_index - 1]);
+      Serial.write(buf[buffer_index + 21]);
+      Serial.write(buf[buffer_index + 20]);
+
       //Serial.println("");
-      //Serial.println("");
-      uint8_t id_msg = (buf[10] - '0') * 100 + (buf[11] - '0') * 10 + (buf[12] - '0');
-      uint8_t out[4];
-      uint8_t offset_msg = 0;
+      uint8_t id_msg = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0') + 1;
       //  I test if the message is for me checking the unique ID
       // This only is used when the assignation message is sent
-      if (sys.id == id_msg && buf[30] == sys.master_id[0] && buf[31] == sys.master_id[1])
+      if (sys.id == id_msg && buf[buffer_index + 20] == sys.master_id[0] && buf[buffer_index + 21] == sys.master_id[1])
         is_for_me = true;
       else
         is_for_me = false;
       Serial.print("Assigned done in id: ");
       Serial.print(id_msg);
       Serial.print(" outputs: ");
-      //for (uint8_t msg_index = 0; msg_index < 4; msg_index++, offset_msg += 4)
-      //{
-      //  out[msg_index] = (buf[start_msg_letter + 8 + 4 + offset_msg] - '0') * 100 + (buf[start_msg_letter + 9 + 4 + offset_msg] - '0') * 10 + (buf[start_msg_letter + 10 + 4 + offset_msg] - '0');
-      //  Serial.print(out[msg_index] + 1);
-      //  Serial.print(" ");
-      //}
+      uint8_t offset_msg = 0;
+      uint8_t out[4];
+      for (uint8_t msg_index = 0; msg_index < 4; msg_index++, offset_msg += 4)
+      {
+        out[msg_index] = (buf[buffer_index + 4 + offset_msg] - '0') * 100 + (buf[buffer_index + 5 + offset_msg] - '0') * 10 + (buf[buffer_index + 6 + offset_msg] - '0');
+        Serial.print(out[msg_index] + 1);
+        Serial.print(" ");
+      }
+      // If the node ID is the same as saved then execute
       if (is_for_me)
       {
         Serial.println("Es para mi, hago la asignación");
@@ -550,9 +536,9 @@ void listen_master() // Listen and actuate in consideration
     }
     case STOP_MSG:
     {
-      stop_flag = false;
       //##STOP#ALL#00
-      if (buf[11] == sys.master_id[0] && buf[12] == sys.master_id[1])
+      buffer_index = start_msg_letter[index_start_msg];
+      if (buf[buffer_index + 9] == sys.master_id[0] && buf[buffer_index + 10] == sys.master_id[1])
       {
         valveAction(1, false);
         delay(1200);
@@ -564,8 +550,9 @@ void listen_master() // Listen and actuate in consideration
       }
       else
       {
-        Serial.println(buf[11]);
-        Serial.println(buf[12]);
+        Serial.println("Esto no es de mi master, es para el: ");
+        Serial.write(buf[buffer_index + 9]);
+        Serial.write(buf[buffer_index + 10]);
       }
       stop_flag = true;
       break;

@@ -59,7 +59,7 @@ typedef struct
   uint8_t start[6][2];
   uint16_t irrigTime[128];
 } program;
-#define MAX_NUM_MESSAGES 4
+#define MAX_NUM_MESSAGES 8
 typedef struct
 {                                        // This struct conteis the messages of radio that are going to be sent but the node is sleeping so it has to wait
   bool request_MANUAL[MAX_NUM_MESSAGES]; // the max number of messages are 4
@@ -496,7 +496,7 @@ void prepare_message()
 
   //I just copy the buffer to data radio and send it
   memcpy(data, long_message, sizeof(long_message));
-
+  send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
   //2.2 introduce the messages:
   for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++)
   {
@@ -504,18 +504,18 @@ void prepare_message()
     if (radio_waitting_msg.request_MANUAL[msg])
     {
       send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
-      //radio_waitting_msg.request_MANUAL[msg] = false;
+      radio_waitting_msg.request_MANUAL[msg] = false;
     }
     else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
     {
       char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
       send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
-      //radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
+      radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
     }
     else if (radio_waitting_msg.request_STOP_ALL[msg])
     {
       send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
-      //radio_waitting_msg.request_STOP_ALL[msg] = false;
+      radio_waitting_msg.request_STOP_ALL[msg] = false;
     }
   }
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
@@ -681,7 +681,7 @@ void send_nodo(uint8_t &order, uint8_t uuid[], uint8_t msg, char valve, char hou
   {
     f_manual = true;
     Serial.println("MANUAL OPEN");
-    uint8_t str_manual[] = "##MANVAL#000#00:00#00#MANX";
+    uint8_t str_manual[] = "##MANVAL#000#00:00#00";
     if (valve > 99)
     {
       str_manual[9] = '1';
@@ -746,7 +746,7 @@ void send_nodo(uint8_t &order, uint8_t uuid[], uint8_t msg, char valve, char hou
     f_time = true;
     Serial.println("REQUEST TIME");
     rtc.updateTime();
-    rtc_node((int)rtc.getHours(), (int)rtc.getMinutes(), (int)rtc.getSeconds(), (int)rtc.getDate(), (int)rtc.getMonth());
+    rtc_node((int)rtc.getHours(), (int)rtc.getMinutes(), (int)rtc.getSeconds(), (int)rtc.getDate(), (int)rtc.getMonth(), order);
     f_time = false;
     break;
   }
@@ -813,9 +813,9 @@ void send_nodo(uint8_t &order, uint8_t uuid[], uint8_t msg, char valve, char hou
   }
   //manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
 }
-void rtc_node(int hour, int minute, int second, int day, int month)
+void rtc_node(int hour, int minute, int second, int day, int month, uint8_t &order)
 {
-  uint8_t send[] = "##TIME:H:XX/M:XX/S:XX/D:XX/M:XX/ ";
+  uint8_t send[] = "##TIME:H:XX/M:XX/S:XX/D:XX/M:XX/";
   send[7 + 2] = (hour / 10) + 0x30;
   send[8 + 2] = (hour % 10) + 0x30;
   send[12 + 2] = (minute / 10) + 0x30;
@@ -827,7 +827,10 @@ void rtc_node(int hour, int minute, int second, int day, int month)
   send[27 + 2] = (month / 10) + 0x30;
   send[28 + 2] = (month % 10) + 0x30;
   for (int i = 0; i < sizeof(send); i++)
-    data[i] = send[i];
+  {
+    data[order] = send[i];
+    order++;
+  }
   //for (int i = 0; i < sizeof(send); i++)
   //  Serial.write(send[i]);
   //manager.sendtoWait(data, sizeof(send), CLIENT_ADDRESS);
