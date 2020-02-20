@@ -131,6 +131,7 @@ void setup()
   // rtc.setAlarmMode(0);
   rtc.setAlarmMode(6);
   rtc.setAlarm(0, 0, 0, 0, 0);
+  rtc.setToCompilerTime();
   // For disable the interrupt : //rtc.setAlarmMode(0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   attachPCINT(digitalPinToPCINT(SW_SETUP), buttonInt, FALLING);
@@ -173,7 +174,7 @@ void loop()
         Serial.write(buf[i]);
       Serial.println(" ");
     }
-    if (millis() - millix >= 1500)
+    if (millis() - millix >= 2000) // It is awake for 2 seconds 
     {
       MODE_AWAKE = false;
       Serial.println(" A dormir");

@@ -146,7 +146,7 @@ void setup()
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   manager.init();
-  manager.setRetries(5);
+  manager.setRetries(8);
   manager.setTimeout(175);
   driver.setTxPower(20, false);
   SWire.begin();
@@ -156,7 +156,10 @@ void setup()
   //rtc.setAlarm(0, 30, 0, 0, 0);
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
-  //rtc.setAlarmMode(0);
+  rtc.setToCompilerTime();
+  rtc.setAlarmMode(6);
+  rtc.setAlarm(0, 0, 0, 0, 0);
+
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
   Serial.println(rtc.stringTime());
@@ -254,7 +257,11 @@ void loop()
         hours_temp = 0;
         min_temp = prog[0].irrigTime[index_prog_A];
       }
-      //send_nodo(1, UUID_1, REQUEST_MANVAL, index_prog_A + 1, hours_temp, min_temp, asignacion);
+      radio_waitting_msg.request_MANUAL = true;
+      radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flag] = index_prog_A + 1;
+      radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flag] = hours_temp;
+      radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flag] = min_temp;    
+      send_nodo(1, UUID_1, REQUEST_MANVAL, index_prog_A + 1, hours_temp, min_temp, asignacion);
       start_programA = false;
     }
     else
