@@ -131,7 +131,7 @@ void setup()
   // rtc.setAlarmMode(0);
   rtc.setAlarmMode(6);
   rtc.setAlarm(0, 0, 0, 0, 0);
-  rtc.setToCompilerTime();
+  //rtc.setToCompilerTime();
   // For disable the interrupt : //rtc.setAlarmMode(0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   attachPCINT(digitalPinToPCINT(SW_SETUP), buttonInt, FALLING);
@@ -174,7 +174,7 @@ void loop()
         Serial.write(buf[i]);
       Serial.println(" ");
     }
-    if (millis() - millix >= 2000) // It is awake for 2 seconds 
+    if (millis() - millix >= 2000) // It is awake for 2 seconds
     {
       MODE_AWAKE = false;
       Serial.println(" A dormir");
@@ -183,11 +183,10 @@ void loop()
       delay(10);
     }
   }
-
   if (!MODE_AWAKE)
   {
     driver.sleep();
-    lowPower.sleep_delay(500);
+    lowPower.sleep_delay(200);
   }
   if (rtc_interrupt)
   {
@@ -199,6 +198,8 @@ void loop()
     millix = millis();
   }
 }
+
+
 void chargeCapacitor()
 {
 
@@ -472,8 +473,10 @@ void listen_master() // Listen and actuate in consideration
       if (seconds < 53)
         seconds -= 1;
       change_time(hours, minutes, day, month, seconds, 2020);
-      rtc.setAlarmMode(6);
-      rtc.setAlarm(0, 0, 0, 0, 0);
+      Serial.println("EL ENVIO EN ACABA A LAS: ");
+      Serial.println(millis());
+      //rtc.setAlarmMode(6);
+      //rtc.setAlarm(0, 0, 0, 0, 0);
       break;
     }
     case ASSIGNED_MSG:
@@ -550,6 +553,7 @@ void listen_master() // Listen and actuate in consideration
       //index_start_msg--;
     }
   }
+  send_master(ACK);
 }
 void send_master(uint8_t msg)
 {
@@ -567,7 +571,7 @@ void send_master(uint8_t msg)
     for (int i = 0; i < sizeof(fault); i++)
       data[i] = fault[i];
   }
-  manager.sendtoWait(data, 70, SERVER_ADDRESS);
+  manager.sendtoWait(data, 10, SERVER_ADDRESS);
 }
 void change_time(int hours, int minutes, int day, int month, int seconds, int year)
 {
@@ -583,17 +587,17 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
   currentTime[6] = rtc.DECtoBCD(year - 2000);
   currentTime[7] = rtc.DECtoBCD(0);
   rtc.setTime(currentTime, TIME_ARRAY_LENGTH);
-  //Serial.println("TIME CHANGE");
-  //Serial.print(rtc.stringDate());
-  //Serial.print(" ");
-  //Serial.println(rtc.stringTime());
-  //Serial.print("DayOfWeek: ");
-  //Serial.println(rtc.dayOfWeek());
-  //
-  ///***** timestamp ******/
-  //rtc.updateTime();
-  //Serial.print("timestamp: ");
-  //Serial.println(rtc.getTimestamp());
+  Serial.println("TIME CHANGE");
+  Serial.print(rtc.stringDate());
+  Serial.print(" ");
+  Serial.println(rtc.stringTime());
+  Serial.print("DayOfWeek: ");
+  Serial.println(rtc.dayOfWeek());
+
+  /***** timestamp ******/
+  rtc.updateTime();
+  Serial.print("timestamp: ");
+  Serial.println(rtc.getTimestamp());
 }
 void rtcInt()
 {
