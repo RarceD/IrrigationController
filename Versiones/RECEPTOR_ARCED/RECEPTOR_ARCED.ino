@@ -73,6 +73,7 @@ uint8_t i, j, cmd, msgPending, minAlarm, hourAlarm, secAlarm, dataSize;
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN];
 uint8_t data_size, buf[RH_RF95_MAX_MESSAGE_LEN];
 bool valve_flag, time_flag, assigned_flag, stop_flag, rf_flag, rtc_interrupt;
+bool to_sleep;
 //uint32_t currentTime, millix;
 int timer_manual_1, timer_manual_2, timer_manual_3, timer_manual_4;
 uint32_t start = 0;
@@ -169,13 +170,15 @@ void loop()
       listen_master(); //When activity is detected listen the master
       //Serial.print("TIME DONE IN: ");
       //Serial.println(millis() - start);
-      Serial.println("He recibido completamete: ");
+      //Serial.println("He recibido completamete: ");
       for (int i = 0; i < sizeof(buf); i++)
         Serial.write(buf[i]);
       Serial.println(" ");
+      to_sleep = true;
     }
-    if (millis() - millix >= 2000) // It is awake for 2 seconds
+    if (millis() - millix >= 2000 || to_sleep) // It is awake for 2 seconds
     {
+      to_sleep =  false;
       MODE_AWAKE = false;
       Serial.println(" A dormir");
       rtc.updateTime();
