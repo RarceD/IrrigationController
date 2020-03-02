@@ -36,7 +36,7 @@
 #define MAX_MANUAL_TIMERS 5
 #define UUID_LENGTH 16
 #define TIME_RESPOSE 50000
-#define MAX_NUM_MESSAGES 8
+#define MAX_NUM_MESSAGES 15
 
 /******************************************************************* declarations  ************************************************************************************/
 
@@ -78,7 +78,7 @@ typedef struct
   bool request_FULL_MESSAGE[MAX_NUM_MESSAGES];
   uint8_t num_message_flags;
   uint8_t valve_info[3][MAX_NUM_MESSAGES];    //This info is for [num oasis,  tº hours , tºminutes]
-  uint8_t assigned_info[4][MAX_NUM_MESSAGES]; //This info is for assigned [num oasis, assig0, assig1, assig2, assig3]
+  uint8_t assigned_info[5][MAX_NUM_MESSAGES]; //This info is for assigned [num oasis, assig0, assig1, assig2, assig3]
 } radio_actions;
 typedef enum
 {
@@ -128,7 +128,7 @@ bool start_programA, start_programB, start_programC, start_programD, start_progr
 bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
 
 uint32_t start = 0;
-uint8_t counter_syn,counter_time_sms;
+uint8_t counter_syn, counter_time_sms;
 /******************************************************************* setup section ************************************************************************************/
 void setup()
 {
@@ -167,7 +167,7 @@ void setup()
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
   //rtc.setToCompilerTime();
   rtc.setAlarmMode(6);
-  rtc.setAlarm(58, 0, 0, 0, 0);
+  rtc.setAlarm(55, 0, 0, 0, 0);
 
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
@@ -229,7 +229,7 @@ void loop()
   {
     // Always the first message have to be sync
     start = millis();
-    while (counter_syn <= 10) // I try to send the message for 10 times, if I fail print kill me.
+    while (counter_syn <= 20) // I try to send the message for 20 times, if I fail print kill me.
     {
       if (millis() - start >= 800)
       {
@@ -560,7 +560,7 @@ void prepare_message()
   //I just copy the buffer to data radio and send it
   memcpy(data, long_message, sizeof(long_message));
   counter_time_sms++;
-  Serial.println(counter_time_sms);
+  // Serial.println(counter_time_sms);
   if (counter_time_sms >= 10)
   {
     counter_time_sms = 0;
@@ -582,7 +582,6 @@ void prepare_message()
       send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
   }
   radio_waitting_msg.num_message_flags = 0;
-
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
 }
 void check_time()
@@ -836,6 +835,7 @@ void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char ho
       str_assigned[12] = (valve % 10) + 0x30;
     }
     uint8_t index_assigned = 14;
+
     for (uint8_t out = 0; out < 4; out++, index_assigned += 4)
     {
       if (assigned[out] > 99)
@@ -857,6 +857,7 @@ void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char ho
     for (int j = 0; j < sizeof(str_assigned); j++)
     {
       data[order] = str_assigned[j];
+      Serial.write(data[order]);
       order++;
     }
     f_asigned = false;
@@ -1341,7 +1342,7 @@ void listening_pg()
       //I always obtein the number of oasis without one unit due to format 8bit vs 16 bits
       String valve_number = getValue(pg, '#', 1);
       int valve_number_true = (int)strtol(&valve_number[0], NULL, 16);
-      Serial.println(valve_number_true);
+      // Serial.println(valve_number_true);
       String valve_assigned;
       int oasis_valves[4];
       char temp_valve[4];
@@ -1364,15 +1365,24 @@ void listening_pg()
       radio_waitting_msg.assigned_info[2][radio_waitting_msg.num_message_flags] = temp_valve[1];
       radio_waitting_msg.assigned_info[3][radio_waitting_msg.num_message_flags] = temp_valve[2];
       radio_waitting_msg.assigned_info[4][radio_waitting_msg.num_message_flags] = temp_valve[3];
+
       for (uint8_t k = 0; k < 5; k++)
         Serial.println(radio_waitting_msg.assigned_info[k][radio_waitting_msg.num_message_flags]);
       radio_waitting_msg.num_message_flags++;
       //send_nodo(1, UUID_1, REQUEST_ASSIGNED_VALVES, valve_number_true + 1, 0, 0, temp_valve);
     }
-    else if (pg.indexOf("SELECTOR#00") > 0)
+    else if (pg.indexOf("SELECTOR#06") > 0)
     {
-      Serial.println("AUTO");
-      //getAllFromPG();
+      Serial.println("STOP");
+      start_programA = false;
+      start_programA_ones = false;
+      start_programB = false;
+      start_programB_ones = false;
+      start_programC = false;
+      start_programC_ones = false;
+      start_programD = false;
+      start_programD_ones = false;
+      radio_waitting_msg.request_STOP_ALL[radio_waitting_msg.num_message_flags++] = true;
     }
   }
 }

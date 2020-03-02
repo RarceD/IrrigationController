@@ -369,6 +369,7 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 }
 void listen_master() // Listen and actuate in consideration
 {
+  send_master(ACK);
   Serial.println("He recibido del master: ");
   // start = millis();
   uint8_t start_msg_letter[] = "AAAA"; //The max number of messages in buffer is 4 because why not?
@@ -556,7 +557,6 @@ void listen_master() // Listen and actuate in consideration
       //index_start_msg--;
     }
   }
-  send_master(ACK);
 }
 void send_master(uint8_t msg)
 {
@@ -611,10 +611,8 @@ void rtcInt()
 void buttonInt()
 {
   DPRINTLN("BUTTON PRESSED");
-  //jam.ledBlink(LED_SETUP, 1000);
-  //disable the interrupt just for always receiving the message
-  //rtc.setAlarmMode(6);
-  //rtc.setAlarm(0, 0, 0, 0, 0);
+  jam.ledBlink(LED_SETUP, 1000);
+  // I set the routine to start and syncronize
 }
 void print_flash()
 {
