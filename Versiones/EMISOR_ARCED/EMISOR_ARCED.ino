@@ -36,6 +36,7 @@
 #define MAX_MANUAL_TIMERS 5
 #define UUID_LENGTH 16
 #define TIME_RESPOSE 50000
+#define MAX_NUM_MESSAGES 8
 
 /******************************************************************* declarations  ************************************************************************************/
 
@@ -68,7 +69,6 @@ typedef struct
   uint32_t millix[MAX_MANUAL_TIMERS];       // Save the millis time timers are just for manual close the valves
   uint32_t time_to_stop[MAX_MANUAL_TIMERS]; // Save the millis time timers are just for manual close the valves
 } manual;
-#define MAX_NUM_MESSAGES 8
 typedef struct
 {                                        // This struct conteis the messages of radio that are going to be sent but the node is sleeping so it has to wait
   bool request_MANUAL[MAX_NUM_MESSAGES]; // the max number of messages are 4
@@ -104,7 +104,7 @@ SoftwareSerial softSerial(PG_RXD, PG_TXD);
 RH_RF95 driver(CS_RF, INT_RF);
 RHReliableDatagram manager(driver, SERVER_ADDRESS);
 
-uint8_t UUID_1[] = {'A', '1'};
+uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
 
 // Don't put this on the stack:
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN];
@@ -119,7 +119,6 @@ uint8_t i, j, rfId, cmd;
 volatile uint8_t oldPort = 0x00;
 volatile bool intButton = false, intRtc = false;
 uint8_t valveDef[MAX_CHILD], progDef[TOTAL_PROG];
-bool comError[MAX_CHILD];
 char asignacion[] = {1, 2, 15, random(1, 127)};
 
 bool oasis_actions;
@@ -129,8 +128,7 @@ bool start_programA, start_programB, start_programC, start_programD, start_progr
 bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
 
 uint32_t start = 0;
-uint8_t counter_syn = 0;
-uint8_t counter_time_sms = 0;
+uint8_t counter_syn,counter_time_sms;
 /******************************************************************* setup section ************************************************************************************/
 void setup()
 {
@@ -177,8 +175,6 @@ void setup()
   Serial.println(rtc.stringDate());
   jam.ledBlink(LED_SETUP, 1000);
   timer_check = timerCheck.setInterval(20000, check_time);
-  for (i = 0; i < MAX_CHILD; i++)
-    comError[i] = false;
   radio_waitting_msg.num_message_flags = 0;
   for (int i = 0; i < sizeof(data); i++)
     data[i] = 'z';
@@ -239,7 +235,6 @@ void loop()
       {
         prepare_message(); // This function spends 400ms to compleat
         counter_syn++;
-
         start = millis();
       }
       listening_pg();
@@ -576,23 +571,15 @@ void prepare_message()
   //2.2 introduce the messages:
   for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++)
   {
-
     if (radio_waitting_msg.request_MANUAL[msg])
-    {
       send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
-      //radio_waitting_msg.request_MANUAL[msg] = false;
-    }
     else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
     {
       char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
       send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
-      //radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
     }
     else if (radio_waitting_msg.request_STOP_ALL[msg])
-    {
       send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
-      //radio_waitting_msg.request_STOP_ALL[msg] = false;
-    }
   }
   radio_waitting_msg.num_message_flags = 0;
 
@@ -1094,9 +1081,9 @@ void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory i
       DPRINT("Send change to OASIS: ");
       DPRINTLN(j + 1);
       jam.fillWithString(data, String(sys.oasisUuid[j]), PAYLOAD_INDEX); //add child uuid to data
-      comError[j] = !sendCommand(data, i, sys.oasisRfId[j]);             //send command to child
+      //comError[j] = !sendCommand(data, i, sys.oasisRfId[j]);             //send command to child
     }
-    checkComError(i);
+    // checkComError(i);
   }
 }
 void getAllFromPG() //this function get all data from PG
@@ -1180,88 +1167,8 @@ void getAllFromPG() //this function get all data from PG
   ;
   digitalWrite(CS_RF, LOW);
 }
-bool sendCommand(uint8_t data[], uint8_t len, uint8_t id) //this function get PG date and time
-{
+//I have remove sendCommand and checkComError
 
-  bool ack;
-  uint8_t i, awakeMsg[RH_RF95_MAX_MESSAGE_LEN];
-
-  delay(250);
-  driver.setPreambleLength(180);
-  awakeMsg[CMD_INDEX] = AWAKE;
-  awakeMsg[CMD_INDEX + 1] = 1;
-  if (data[CMD_INDEX] == PLUG_PLAY)
-    i = jam.fillWithString(awakeMsg, String(sys.oasisUuid[sys.nChild - 1]), PAYLOAD_INDEX);
-  else
-    i = jam.fillWithString(awakeMsg, String(sys.oasisUuid[id - 1]), PAYLOAD_INDEX);
-  ack = manager.sendtoWait(awakeMsg, i, id);
-  if (ack)
-  {
-    driver.setPreambleLength(8);
-    DPRINTLN("Sent");
-    ack = manager.sendtoWait(data, len, id);
-  }
-}
-/*
-  this function check is there
-*/
-void checkComError(uint8_t len)
-{
-
-  String aux;
-  uint8_t id, attempts;
-
-  for (id = 0, attempts = 2; id < sys.nChild; id++)
-  {
-    if (!comError[id])
-      continue;
-    while (attempts)
-    {
-      if (comError[id])
-      {
-        DPRINTLN("Communication to OASIS " + String(id + 1) + " failed, " + String(attempts) + " left. Resend message");
-        jam.fillWithString(data, String(sys.oasisUuid[id]), PAYLOAD_INDEX);
-        comError[id] = !sendCommand(data, len, sys.oasisRfId[id]);
-        if (comError[id])
-        {
-          attempts--;
-          if (!attempts)
-          {
-            DPRINTLN("OASIS " + String(id + 1) + " is not responding");
-            aux = (id < 10) ? "0" + String(id) : String(id);
-            if (pg.indexOf("PAIRING") != -1)
-            {
-              cmd_nok[ADDR_INDEX] = aux.charAt(0);
-              cmd_nok[ADDR_INDEX + 1] = aux.charAt(1);
-              pgCommand(cmd_nok, sizeof(cmd_nok));
-            }
-            else
-            {
-              cmd_com_error[ADDR_INDEX] = aux.charAt(0);
-              cmd_com_error[ADDR_INDEX + 1] = aux.charAt(1);
-              pgCommand(cmd_com_error, sizeof(cmd_com_error));
-            }
-            comError[id] = false;
-          }
-        }
-        else
-        {
-          DPRINTLN("Communication to OASIS " + String(id + 1) + " restablished. " + "Message sent with success");
-          if (pg.indexOf("PAIRING") != -1)
-          {
-            cmd_ok[ADDR_INDEX] = aux.charAt(0);
-            cmd_ok[ADDR_INDEX + 1] = aux.charAt(1);
-            pgCommand(cmd_ok, sizeof(cmd_ok));
-          }
-          break;
-        }
-      }
-    }
-  }
-}
-/*
-  this function send read command to PG and get response
-*/
 void pgCommand(uint8_t command[], uint8_t len)
 {
 
