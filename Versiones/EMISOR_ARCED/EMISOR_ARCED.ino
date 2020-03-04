@@ -229,16 +229,16 @@ void loop()
   {
     // Always the first message have to be sync
     start = millis();
-    while (counter_syn <= 20) // I try to send the message for 20 times, if I fail print kill me.
+    while (counter_syn <= 25) // I try to send the message for 25 times, if I fail print kill me.
     {
-      if (millis() - start >= 800)
+      if (millis() - start >= 500)
       {
         prepare_message(); // This function spends 400ms to compleat
         counter_syn++;
         start = millis();
       }
       listening_pg();
-
+      /*
       if (listen_nodo()) // When a nodo response then I am able to stop sendding because it has received correctly
       {
         for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
@@ -251,7 +251,17 @@ void loop()
         }
         break;
       }
+      */
     }
+    for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
+    {
+      radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
+      radio_waitting_msg.request_TIME[x] = false;
+      radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
+      radio_waitting_msg.request_STOP_ALL[x] = false;
+      radio_waitting_msg.request_FULL_MESSAGE[x] = false;
+    }
+
     counter_syn = 0;
     oasis_actions = false;
   }
@@ -564,8 +574,8 @@ void prepare_message()
   if (counter_time_sms >= 10)
   {
     counter_time_sms = 0;
-    send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
   }
+  send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
   //Serial.println("EL ENVIO EN MILLIS COMIENZA A LAS: ");
   //Serial.println(millis());
   //2.2 introduce the messages:
@@ -926,8 +936,8 @@ bool listen_nodo() // if the oasis send something i listen
     uint8_t len = sizeof(buf);
     manager.recvfromAck(buf, &len);
     Serial.println("NODE_RECEIVED");
-    //for (uint8_t i = 0; i < 70; i++) //loop from the buffer looking for the end of message
-    //  Serial.write(buf[i]);
+    for (uint8_t i = 0; i < 70; i++) //loop from the buffer looking for the end of message
+      Serial.write(buf[i]);
     return true;
   }
   return false;

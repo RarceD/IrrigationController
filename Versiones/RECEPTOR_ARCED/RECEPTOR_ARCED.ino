@@ -80,6 +80,8 @@ uint32_t start = 0;
 
 /******************************************************************* setup section ************************************************************************************/
 uint32_t millix;
+
+bool first_start_syn = true;
 void setup()
 {
 
@@ -111,7 +113,7 @@ void setup()
   digitalWrite(BIN2, LOW);
   flash.powerUp();
   flash.begin();
-  //sys.id = 13;
+  //sys.id = 3;
   //sys.master_id[0] = 'A';
   //sys.master_id[1] = '1';
   //sys.assigned_output[0] = 1;
@@ -132,7 +134,7 @@ void setup()
   // rtc.setAlarmMode(0);
   rtc.setAlarmMode(6);
   rtc.setAlarm(0, 0, 0, 0, 0);
-  //rtc.setToCompilerTime();
+  // rtc.setToCompilerTime();
   // For disable the interrupt : //rtc.setAlarmMode(0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   attachPCINT(digitalPinToPCINT(SW_SETUP), buttonInt, FALLING);
@@ -149,6 +151,7 @@ void setup()
 bool MODE_AWAKE;
 void loop()
 {
+  /*
   if (Serial.available())
   {
     int a = Serial.read();
@@ -160,7 +163,10 @@ void loop()
       // rtc.setAlarm(0, 0, 0, 0, 0);
     }
   }
-  if (MODE_AWAKE)
+  bool first_start_syn =  false;
+  The first time you plug we have to wait received the time to sincronize  
+  */
+  if (first_start_syn)
   {
     if (manager.available()) // Detect radio activity
     {
@@ -168,40 +174,53 @@ void loop()
       uint8_t len = sizeof(buf);
       manager.recvfromAck(buf, &len);
       listen_master(); //When activity is detected listen the master
-      //Serial.print("TIME DONE IN: ");
-      //Serial.println(millis() - start);
-      //Serial.println("He recibido completamete: ");
-      for (int i = 0; i < sizeof(buf); i++)
-        Serial.write(buf[i]);
-      Serial.println(" ");
-      to_sleep = true;
     }
-    if (millis() - millix >= 2000 || to_sleep) // It is awake for 2 seconds
+      jam.ledBlink(LED_SETUP, 500);
+  }
+  else
+  {
+    if (MODE_AWAKE)
     {
-      to_sleep =  false;
-      MODE_AWAKE = false;
-      Serial.println(" A dormir");
+      if (manager.available()) // Detect radio activity
+      {
+        start = millis();
+        uint8_t len = sizeof(buf);
+        manager.recvfromAck(buf, &len);
+        listen_master(); //When activity is detected listen the master
+        //Serial.print("TIME DONE IN: ");
+        //Serial.println(millis() - start);
+        //Serial.println("He recibido completamete: ");
+        for (int i = 0; i < sizeof(buf); i++)
+          Serial.write(buf[i]);
+        Serial.println(" ");
+        to_sleep = true;
+      }
+      if (millis() - millix >= 2000 || to_sleep) // It is awake for 2 seconds
+      {
+        to_sleep = false;
+        MODE_AWAKE = false;
+        Serial.println(" A dormir");
+        rtc.updateTime();
+        Serial.println(rtc.stringTime());
+        delay(10);
+      }
+    }
+    if (!MODE_AWAKE)
+    {
+      driver.sleep();
+      lowPower.sleep_delay(200);
+    }
+    if (rtc_interrupt)
+    {
+      rtc_interrupt = false;
+      MODE_AWAKE = true;
       rtc.updateTime();
       Serial.println(rtc.stringTime());
-      delay(10);
+      Serial.println("AWAKE MODE");
+      millix = millis();
     }
   }
-  if (!MODE_AWAKE)
-  {
-    driver.sleep();
-    lowPower.sleep_delay(200);
-  }
-  if (rtc_interrupt)
-  {
-    rtc_interrupt = false;
-    MODE_AWAKE = true;
-    rtc.updateTime();
-    Serial.println(rtc.stringTime());
-    Serial.println("AWAKE MODE");
-    millix = millis();
-  }
 }
-
 
 void chargeCapacitor()
 {
@@ -474,7 +493,7 @@ void listen_master() // Listen and actuate in consideration
         month = buf[buffer_index + 20] - '0';
       else
         month = (buf[buffer_index + 19] - '0') * 10 + (buf[buffer_index + 20] - '0');
-      if (seconds < 53)
+      if (seconds < 53 && seconds > 1)
         seconds -= 1;
       change_time(hours, minutes, day, month, seconds, 2020);
       Serial.println("EL ENVIO EN ACABA A LAS: ");
@@ -562,8 +581,11 @@ void send_master(uint8_t msg)
 {
   if (msg == ACK)
   {
-    Serial.println("##OK");
-    char ack[] = "##OK";
+    Serial.println("I send ack to master");
+    char ack[] = "##OKXX##";
+    ack[4] = 0;
+    ack[5] = sys.id;
+
     for (int i = 0; i < sizeof(ack); i++)
       data[i] = ack[i];
   }
@@ -580,6 +602,7 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
 {
 
   rtc.set24Hour();
+  first_start_syn = false;
   uint8_t currentTime[8];
   currentTime[0] = rtc.DECtoBCD(0);
   currentTime[1] = rtc.DECtoBCD(seconds);
@@ -606,12 +629,12 @@ void rtcInt()
 {
   Serial.println("RTC_INT");
   rtc_interrupt = true;
-  //change_time(8, 7, 17, 2, 10, 20);  //rtc.setTime(0, 10, 6, 20, 17, 2, 20, 1);
 }
 void buttonInt()
 {
   DPRINTLN("BUTTON PRESSED");
   jam.ledBlink(LED_SETUP, 1000);
+  first_start_syn = true;
   // I set the routine to start and syncronize
 }
 void print_flash()
