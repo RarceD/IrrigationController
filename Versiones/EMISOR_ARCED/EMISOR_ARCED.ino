@@ -29,6 +29,13 @@
 #define PCINT digitalPinToPCMSKbit(PCINT_PIN)
 #define PCPIN *portInputRegister(digitalPinToPort(PCINT_PIN))
 
+#define TX_PWR 20
+#define CLIENT_ADDRESS_1 2
+#define CLIENT_ADDRESS_2 3
+#define CLIENT_ADDRESS_3 4
+#define CLIENT_ADDRESS_4 5
+#define CLIENT_ADDRESS_5 6
+
 #define CLIENT_ADDRESS 2
 #define SERVER_ADDRESS 1
 
@@ -89,10 +96,16 @@ typedef enum
   REQUEST_STOP_ALL,
   REQUEST_FULL_MESSAGE
 } messages_radio;
+typedef struct
+{
+  bool id_node[5];
+} msg_received_all;
 
 Jam jam;
 sysVar sys;
 manual man;
+msg_received_all ack;
+
 RV1805 rtc;
 Sleep lowPower;
 SimpleTimer timerA, timerB, timerC, timerD, timerE, timerF, timerCheck;
@@ -108,7 +121,7 @@ uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
 
 // Don't put this on the stack:
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN];
-uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+uint8_t buf[50];
 bool rf_flag = false;
 
 String pg;
@@ -211,6 +224,7 @@ void loop()
   and when is the time to send I do it
   */
   listening_pg();
+  listen_nodo();
 
   if (!digitalRead(PCINT_PIN))
   {
@@ -229,44 +243,29 @@ void loop()
   {
     // Always the first message have to be sync
     start = millis();
-    while (counter_syn <= 25) // I try to send the message for 25 times, if I fail print kill me.
+    bool all_nodes_ack = false;
+    while (counter_syn <= 15) // I try to send the message for 25 times, if I fail print kill me.
     {
       if (millis() - start >= 500)
       {
+        uint32_t time_sendding = millis();
+  
         prepare_message(); // This function spends 400ms to compleat
         counter_syn++;
         start = millis();
+        Serial.println(start-time_sendding);
+        listen_nodo();
       }
       listening_pg();
-      /*
-      if (listen_nodo()) // When a nodo response then I am able to stop sendding because it has received correctly
-      {
-        for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
-        {
-          radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
-          radio_waitting_msg.request_TIME[x] = false;
-          radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
-          radio_waitting_msg.request_STOP_ALL[x] = false;
-          radio_waitting_msg.request_FULL_MESSAGE[x] = false;
-        }
-        break;
-      }
-      */
-    }
-    for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
-    {
-      radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
-      radio_waitting_msg.request_TIME[x] = false;
-      radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
-      radio_waitting_msg.request_STOP_ALL[x] = false;
-      radio_waitting_msg.request_FULL_MESSAGE[x] = false;
+      listen_nodo();
     }
 
     counter_syn = 0;
     oasis_actions = false;
   }
+
   /*
-  The ejecution of the programs in order. THIS PART IS A SAME AND I DO NOT CONSIDER RESPONSIBLE FOR THIS SHIT
+  The ejecution of the programs in order. THIS PART IS A SAME AND I DO NOT CONSIDER RESPONSIBLE FOR THIS PIECE OF SHIT
   */
   if (start_programA)
   {
@@ -929,18 +928,42 @@ void write_flash()
     Serial.println(" ");
   }
 }
-bool listen_nodo() // if the oasis send something i listen
+void listen_nodo() // if the oasis send something i listen
 {
   if (manager.available()) // Detect radio activity
   {
     uint8_t len = sizeof(buf);
     manager.recvfromAck(buf, &len);
     Serial.println("NODE_RECEIVED");
-    for (uint8_t i = 0; i < 70; i++) //loop from the buffer looking for the end of message
+
+    if (buf[5] == '1')
+    {
+      Serial.println("Node 1 OK");
+      ack.id_node[0] = true;
+    }
+    if (buf[5] == '2')
+    {
+      Serial.println("Node 2 OK");
+      ack.id_node[1] = true;
+    }
+    for (uint8_t i = 0; i < 40; i++) //loop from the buffer looking for the end of message
       Serial.write(buf[i]);
-    return true;
   }
-  return false;
+  if (ack.id_node[0] && ack.id_node[1])
+  {
+    ack.id_node[0] = false;
+    ack.id_node[1] = false;
+    for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
+    {
+      radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
+      radio_waitting_msg.request_TIME[x] = false;
+      radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
+      radio_waitting_msg.request_STOP_ALL[x] = false;
+      radio_waitting_msg.request_FULL_MESSAGE[x] = false;
+    }
+    oasis_actions = false;
+    Serial.println("CLEAR BUFFER");
+  }
 }
 void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {

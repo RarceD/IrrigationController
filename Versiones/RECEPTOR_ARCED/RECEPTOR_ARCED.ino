@@ -30,9 +30,16 @@
 /******************************************************************* declarations  ************************************************************************************/
 
 #define TX_PWR 20
-
 #define CLIENT_ADDRESS 2
+
+#define CLIENT_ADDRESS_1 2
+#define CLIENT_ADDRESS_2 3
+#define CLIENT_ADDRESS_3 4
+#define CLIENT_ADDRESS_4 5
+#define CLIENT_ADDRESS_5 6
+
 #define SERVER_ADDRESS 1
+
 #define TIME_RESPONSE_NODE 1000
 
 #define FLASH_SYS_DIR 0x040400
@@ -170,12 +177,12 @@ void loop()
   {
     if (manager.available()) // Detect radio activity
     {
-      start = millis();
+      //start = millis();
       uint8_t len = sizeof(buf);
       manager.recvfromAck(buf, &len);
       listen_master(); //When activity is detected listen the master
     }
-      jam.ledBlink(LED_SETUP, 500);
+    jam.ledBlink(LED_SETUP, 500);
   }
   else
   {
@@ -186,7 +193,6 @@ void loop()
         start = millis();
         uint8_t len = sizeof(buf);
         manager.recvfromAck(buf, &len);
-        listen_master(); //When activity is detected listen the master
         //Serial.print("TIME DONE IN: ");
         //Serial.println(millis() - start);
         //Serial.println("He recibido completamete: ");
@@ -194,15 +200,20 @@ void loop()
           Serial.write(buf[i]);
         Serial.println(" ");
         to_sleep = true;
+        MODE_AWAKE = false;
       }
-      if (millis() - millix >= 2000 || to_sleep) // It is awake for 2 seconds
+      if (millis() - millix >= 4000 || to_sleep) // It is awake for 2 seconds
       {
         to_sleep = false;
         MODE_AWAKE = false;
         Serial.println(" A dormir");
         rtc.updateTime();
-        Serial.println(rtc.stringTime());
-        delay(10);
+        //Serial.println(rtc.stringTime());
+        delay(1500);
+        Serial.println(millis() - start);
+        send_master(ACK);
+      listen_master(); //When activity is detected listen the master
+      delay(1000);
       }
     }
     if (!MODE_AWAKE)
@@ -388,9 +399,7 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 }
 void listen_master() // Listen and actuate in consideration
 {
-  send_master(ACK);
   Serial.println("He recibido del master: ");
-  // start = millis();
   uint8_t start_msg_letter[] = "AAAA"; //The max number of messages in buffer is 4 because why not?
   char timestamp_array[] = "1581874380";
   uint8_t index_start_msg = 0;
@@ -406,9 +415,9 @@ void listen_master() // Listen and actuate in consideration
     if (i > 0 && i < 11)
       timestamp_array[i - 1] = (char)buf[i];
   }
-  Serial.println("  ");
-  Serial.print("The number of messages is: ");
-  Serial.println(index_start_msg);
+  //Serial.println("  ");
+  //Serial.print("The number of messages is: ");
+  //Serial.println(index_start_msg);
 
   //I obtein the timestamp in an usefull way and then change the time:
 
@@ -420,9 +429,9 @@ void listen_master() // Listen and actuate in consideration
   // I execute all the actions saved in the buffer start_msg_letter[]
   while (index_start_msg > 0)
   {
-    Serial.print("The letter of the msg is: ");
-    Serial.write(buf[start_msg_letter[index_start_msg - 1]]);
-    Serial.println("  ");
+    //Serial.print("The letter of the msg is: ");
+    //Serial.write(buf[start_msg_letter[index_start_msg - 1]]);
+    //Serial.println("  ");
     switch (buf[start_msg_letter[--index_start_msg]])
     {
     case MANVAL_MSG:
@@ -463,7 +472,7 @@ void listen_master() // Listen and actuate in consideration
     }
     case TIME_MSG:
     {
-      //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/ ";
+      //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/";
       //uint8_t sead[] = "01234567890  12345678 9012345 67890";
       buffer_index = start_msg_letter[index_start_msg] + 8;
       int hours, minutes, day, month, year, seconds;
@@ -475,16 +484,10 @@ void listen_master() // Listen and actuate in consideration
         minutes = buf[buffer_index + 5] - '0';
       else
         minutes = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
-
       if (buf[buffer_index + 9] == '0')
         seconds = buf[buffer_index + 10] - '0';
       else
         seconds = (buf[buffer_index + 9] - '0') * 10 + (buf[buffer_index + 10] - '0');
-      Serial.write(buf[buffer_index + 10]);
-      Serial.println("unidades");
-      Serial.write(buf[buffer_index + 9]);
-      Serial.println("decenas");
-
       if (buf[buffer_index + 14] == '0')
         day = buf[buffer_index + 15] - '0';
       else
@@ -496,10 +499,6 @@ void listen_master() // Listen and actuate in consideration
       if (seconds < 53 && seconds > 1)
         seconds -= 1;
       change_time(hours, minutes, day, month, seconds, 2020);
-      Serial.println("EL ENVIO EN ACABA A LAS: ");
-      Serial.println(millis());
-      //rtc.setAlarmMode(6);
-      //rtc.setAlarm(0, 0, 0, 0, 0);
       break;
     }
     case ASSIGNED_MSG:
@@ -572,8 +571,7 @@ void listen_master() // Listen and actuate in consideration
     }
     default:
       Serial.println("NO TIENE QUE SALIR");
-
-      //index_start_msg--;
+      delay(500);
     }
   }
 }
@@ -583,8 +581,8 @@ void send_master(uint8_t msg)
   {
     Serial.println("I send ack to master");
     char ack[] = "##OKXX##";
-    ack[4] = 0;
-    ack[5] = sys.id;
+    ack[4] = '0';
+    ack[5] = '1';
 
     for (int i = 0; i < sizeof(ack); i++)
       data[i] = ack[i];
@@ -596,7 +594,7 @@ void send_master(uint8_t msg)
     for (int i = 0; i < sizeof(fault); i++)
       data[i] = fault[i];
   }
-  manager.sendtoWait(data, 10, SERVER_ADDRESS);
+  manager.sendtoWait(data, 30, SERVER_ADDRESS);
 }
 void change_time(int hours, int minutes, int day, int month, int seconds, int year)
 {
@@ -614,16 +612,16 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
   currentTime[7] = rtc.DECtoBCD(0);
   rtc.setTime(currentTime, TIME_ARRAY_LENGTH);
   Serial.println("TIME CHANGE");
-  Serial.print(rtc.stringDate());
-  Serial.print(" ");
-  Serial.println(rtc.stringTime());
-  Serial.print("DayOfWeek: ");
-  Serial.println(rtc.dayOfWeek());
+  // Serial.print(rtc.stringDate());
+  // Serial.print(" ");
+  // Serial.println(rtc.stringTime());
+  // Serial.print("DayOfWeek: ");
+  // Serial.println(rtc.dayOfWeek());
 
-  /***** timestamp ******/
-  rtc.updateTime();
-  Serial.print("timestamp: ");
-  Serial.println(rtc.getTimestamp());
+  // /***** timestamp ******/
+  // rtc.updateTime();
+  // Serial.print("timestamp: ");
+  // Serial.println(rtc.getTimestamp());
 }
 void rtcInt()
 {
