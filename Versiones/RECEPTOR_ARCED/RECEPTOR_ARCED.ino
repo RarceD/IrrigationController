@@ -120,7 +120,7 @@ void setup()
   digitalWrite(BIN2, LOW);
   flash.powerUp();
   flash.begin();
-  //sys.id = 3;
+  //sys.id = 1;
   //sys.master_id[0] = 'A';
   //sys.master_id[1] = '1';
   //sys.assigned_output[0] = 1;
@@ -133,6 +133,8 @@ void setup()
   manager.init();
   driver.setPreambleLength(8);
   driver.setTxPower(TX_PWR, false);
+  manager.setRetries(10);
+  manager.setTimeout(150);
   SWire.begin();
   rtc.begin();
   rtc.set24Hour();
@@ -156,64 +158,61 @@ void setup()
 }
 /******************************************************************* main program  ************************************************************************************/
 bool MODE_AWAKE;
+bool SEND_ACK;
+
 void loop()
 {
-  /*
+
   if (Serial.available())
   {
-    int a = Serial.read();
-    DPRINTLN(a);
+    uint8_t a = Serial.read();
     if (a == 97)
     {
-      rtc.setAlarmMode(0);
-      Serial.println("Killing interrupt");
-      // rtc.setAlarm(0, 0, 0, 0, 0);
+      send_master(ACK); // This function spends 400ms to compleat
     }
   }
-  bool first_start_syn =  false;
+  /*
   The first time you plug we have to wait received the time to sincronize  
   */
   if (first_start_syn)
   {
-    if (manager.available()) // Detect radio activity
+    if (manager.available()) // Detect radio activity and set a timer for waking up at 00
     {
       //start = millis();
+      Serial.println("FIRST TRY");
       uint8_t len = sizeof(buf);
       manager.recvfromAck(buf, &len);
       listen_master(); //When activity is detected listen the master
+      Serial.println("ESPERA");
+      delay(500);
     }
     jam.ledBlink(LED_SETUP, 500);
   }
+  // When is syn there are 3 modes: SLEEP, AWAKE and SEND_ACK
   else
   {
     if (MODE_AWAKE)
     {
+      delay(10);
       if (manager.available()) // Detect radio activity
       {
-        start = millis();
         uint8_t len = sizeof(buf);
         manager.recvfromAck(buf, &len);
-        //Serial.print("TIME DONE IN: ");
-        //Serial.println(millis() - start);
-        //Serial.println("He recibido completamete: ");
+        listen_master(); //When activity is detected listen the master
+        to_sleep = true;
         for (int i = 0; i < sizeof(buf); i++)
           Serial.write(buf[i]);
         Serial.println(" ");
-        to_sleep = true;
-        MODE_AWAKE = false;
+        delay(10);
+        // I set a timer for sendding the ACK to master
       }
       if (millis() - millix >= 4000 || to_sleep) // It is awake for 2 seconds
       {
+        Serial.println(" A dormir");
         to_sleep = false;
         MODE_AWAKE = false;
-        Serial.println(" A dormir");
-        rtc.updateTime();
-        //Serial.println(rtc.stringTime());
-        delay(1500);
-        Serial.println(millis() - start);
-        send_master(ACK);
-      listen_master(); //When activity is detected listen the master
-      delay(1000);
+        SEND_ACK = true;
+        delay(10);
       }
     }
     if (!MODE_AWAKE)
@@ -224,11 +223,26 @@ void loop()
     if (rtc_interrupt)
     {
       rtc_interrupt = false;
-      MODE_AWAKE = true;
       rtc.updateTime();
       Serial.println(rtc.stringTime());
-      Serial.println("AWAKE MODE");
+
+      if (SEND_ACK)
+      {
+        SEND_ACK = false;
+        rtc.setAlarmMode(6);
+        rtc.setAlarm(0, 0, 0, 0, 0);
+        send_master(ACK);
+        Serial.println("ACK MODE");
+      }
+      else
+      {
+        MODE_AWAKE = true;
+        rtc.setAlarmMode(6);
+        rtc.setAlarm(30, 0, 0, 0, 0);
+        Serial.println("AWAKE MODE");
+      }
       millix = millis();
+      delay(10);
     }
   }
 }
@@ -580,10 +594,8 @@ void send_master(uint8_t msg)
   if (msg == ACK)
   {
     Serial.println("I send ack to master");
-    char ack[] = "##OKXX##";
-    ack[4] = '0';
-    ack[5] = '1';
-
+    char ack[] = "##OK01##";
+    ack[5] = sys.id - '0';
     for (int i = 0; i < sizeof(ack); i++)
       data[i] = ack[i];
   }
@@ -594,7 +606,7 @@ void send_master(uint8_t msg)
     for (int i = 0; i < sizeof(fault); i++)
       data[i] = fault[i];
   }
-  manager.sendtoWait(data, 30, SERVER_ADDRESS);
+  manager.sendtoWait(data, 15, SERVER_ADDRESS);
 }
 void change_time(int hours, int minutes, int day, int month, int seconds, int year)
 {
