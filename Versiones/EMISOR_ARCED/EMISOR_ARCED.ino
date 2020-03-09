@@ -30,20 +30,14 @@
 #define PCPIN *portInputRegister(digitalPinToPort(PCINT_PIN))
 
 #define TX_PWR 20
-#define CLIENT_ADDRESS_1 2
-#define CLIENT_ADDRESS_2 3
-#define CLIENT_ADDRESS_3 4
-#define CLIENT_ADDRESS_4 5
-#define CLIENT_ADDRESS_5 6
-
 #define CLIENT_ADDRESS 2
 #define SERVER_ADDRESS 1
 
 #define MAX_NODE_NUMBER 7
 #define MAX_MANUAL_TIMERS 10
+#define MAX_NUM_MESSAGES 15
 #define UUID_LENGTH 16
 #define TIME_RESPOSE 50000
-#define MAX_NUM_MESSAGES 15
 
 /******************************************************************* declarations  ************************************************************************************/
 
@@ -98,7 +92,7 @@ typedef enum
 } messages_radio;
 typedef struct
 {
-  bool id_node[5];
+  bool id_node[32]; // I allow 32 nodes, 4 bytes of memmory
 } msg_received_all;
 
 Jam jam;
@@ -200,6 +194,8 @@ void setup()
     radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
   }
 }
+uint8_t number_msg_compleatly_sent;
+bool pg_interact_while_radio;
 
 void loop()
 {
@@ -244,22 +240,33 @@ void loop()
     // Always the first message have to be sync
     start = millis();
     bool all_nodes_ack = false;
-    while (counter_syn <= 15) // I try to send the message for 25 times, if I fail print kill me.
+    number_msg_compleatly_sent = radio_waitting_msg.num_message_flags;
+    pg_interact_while_radio = false;
+
+    while (counter_syn <= 12) // I try to send the message for 25 times, if I fail print kill me.
     {
-      if (millis() - start >= 500)
+      if (millis() - start >= 500) //500 ms is a nice number
       {
-        uint32_t time_sendding = millis();
-  
         prepare_message(); // This function spends 400ms to compleat
         counter_syn++;
-        start = millis();
-        Serial.println(start-time_sendding);
-        listen_nodo();
       }
-      listening_pg();
-      listen_nodo();
+      listening_pg(); // This
     }
 
+    if (pg_interact_while_radio)
+    {
+      pg_interact_while_radio = false;
+      for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
+      {
+        radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
+        radio_waitting_msg.request_TIME[x] = false;
+        radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
+        radio_waitting_msg.request_STOP_ALL[x] = false;
+        radio_waitting_msg.request_FULL_MESSAGE[x] = false;
+      }
+      radio_waitting_msg.num_message_flags = 0;
+      Serial.println("CLEAR MEMMORY FLAGS");
+    }
     counter_syn = 0;
     oasis_actions = false;
   }
@@ -533,9 +540,6 @@ void loop()
     }
   }
 
-  /*
-  When the Serial Port of the PG is set I read what happend there ant act.
-  */
   timerA.run();
   timerB.run();
   timerC.run();
@@ -550,7 +554,6 @@ void prepare_message()
   uint8_t long_message[4]; // = "_1581603360_XNX_##STOP#ALL#00_X_##ASIGNED#000#000:000:000:000#00_X_##MANVAL#000#00:00#00_X_##STOP#ALL#00";
   for (int i = 0; i < sizeof(data) / 2; i++)
     data[i] = 'z';
-
   // First obtein the timestamp and save to DATA radio
   //String timestamp = String(rtc.getTimestamp()); // from string I convert to char[]
   uint16_t index = 0;
@@ -590,7 +593,7 @@ void prepare_message()
     else if (radio_waitting_msg.request_STOP_ALL[msg])
       send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
   }
-  radio_waitting_msg.num_message_flags = 0;
+  //radio_waitting_msg.num_message_flags = 0;
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
 }
 void check_time()
@@ -930,26 +933,42 @@ void write_flash()
 }
 void listen_nodo() // if the oasis send something i listen
 {
-  if (manager.available()) // Detect radio activity
+  if (manager.available()) // Detect radio activity and find id of the nodes
   {
     uint8_t len = sizeof(buf);
     manager.recvfromAck(buf, &len);
-    Serial.println("NODE_RECEIVED");
-
-    if (buf[5] == '1')
+    switch (buf[5])
     {
+    case '1':
       Serial.println("Node 1 OK");
       ack.id_node[0] = true;
-    }
-    if (buf[5] == '2')
-    {
+      break;
+    case '2':
       Serial.println("Node 2 OK");
       ack.id_node[1] = true;
+      break;
+    case '3':
+      Serial.println("Node 3 OK");
+      ack.id_node[2] = true;
+      break;
+    case '4':
+      Serial.println("Node 4 OK");
+      ack.id_node[3] = true;
+      break;
+    case '5':
+      Serial.println("Node 5 OK");
+      ack.id_node[4] = true;
+      break;
+    default:
+      Serial.println("Everything is bad");
+      break;
     }
-    for (uint8_t i = 0; i < 40; i++) //loop from the buffer looking for the end of message
-      Serial.write(buf[i]);
+    // for (uint8_t i = 0; i < 40; i++) //loop from the buffer looking for the end of message
+    //   Serial.write(buf[i]);
   }
-  if (ack.id_node[0] && ack.id_node[1])
+  // The second following comparison is due to if, while the emiter is sendding, the user touch the programmer I do not allow to increase the number of msg to send,
+  // and I also do not clear the buffer
+  if (ack.id_node[0] && ack.id_node[1] && radio_waitting_msg.num_message_flags == number_msg_compleatly_sent)
   {
     ack.id_node[0] = false;
     ack.id_node[1] = false;
@@ -961,7 +980,8 @@ void listen_nodo() // if the oasis send something i listen
       radio_waitting_msg.request_STOP_ALL[x] = false;
       radio_waitting_msg.request_FULL_MESSAGE[x] = false;
     }
-    oasis_actions = false;
+    // radio_waitting_msg.num_message_flags = 0;
+    // oasis_actions = false;
     Serial.println("CLEAR BUFFER");
   }
 }
@@ -1262,6 +1282,7 @@ void listening_pg()
     DPRINT("PG: ");
     DPRINTLN(pg);
     // MANVALV START#01#0100#⸮&
+    pg_interact_while_radio = true;
     if (pg.indexOf("MANVALV START") > 0)
     {
       Serial.println("ES EL COMANDO DE ABRIR VALVULA MANUAL");
@@ -1280,12 +1301,7 @@ void listening_pg()
       radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
       radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number;
       radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = valve_time_hour;
-      radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags] = valve_time_min;
-
-      //Serial.println("El valor de la radio waitting ha cambiado");
-      //Serial.println(radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags]);
-      //Serial.println(radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags]);
-      //Serial.println(radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++]);
+      radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = valve_time_min;
 
       man.timer_active = true;
       man.millix[man.index] = millis();
@@ -1296,8 +1312,6 @@ void listening_pg()
       Serial.print("En la válvula: ");
       Serial.println(man.valve[man.index]);
       man.index++;
-
-      //send_nodo(1, UUID_1, REQUEST_MANUAL, valve_number, valve_time_hour, valve_time_min, asignacion);
     }
     else if (pg.indexOf("MANPRG START#") > 0)
     {

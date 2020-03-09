@@ -61,6 +61,7 @@ typedef struct
   uint8_t id;                 // This is the unique ID, there are 250 units so we can fix this number for identify the net
   uint8_t assigned_output[4]; // There are 4 output valves
   uint8_t master_id[2];
+  uint8_t ack_msg[8];
 } sysVar;
 
 Jam jam;
@@ -120,15 +121,22 @@ void setup()
   digitalWrite(BIN2, LOW);
   flash.powerUp();
   flash.begin();
-  //sys.id = 1;
-  //sys.master_id[0] = 'A';
-  //sys.master_id[1] = '1';
-  //sys.assigned_output[0] = 1;
-  //sys.assigned_output[1] = 2;
-  //sys.assigned_output[2] = 3;
-  //sys.assigned_output[3] = 4;
-  //flash.eraseSector(FLASH_SYS_DIR);
-  //flash.writeAnything(FLASH_SYS_DIR, sys);
+
+  // I have to change the flash info for each devise:
+  /*
+  sys.id = 2;
+  sys.master_id[0] = 'A';
+  sys.master_id[1] = '1';
+  sys.assigned_output[0] = 1;
+  sys.assigned_output[1] = 2;
+  sys.assigned_output[2] = 3;
+  sys.assigned_output[3] = 4;
+  char ack[] = "##OK02##";
+  for (int i = 0; i < sizeof(ack); i++)
+    sys.ack_msg[i] = ack[i];
+  flash.eraseSector(FLASH_SYS_DIR);
+  flash.writeAnything(FLASH_SYS_DIR, sys);
+  */
   flash.readAnything(FLASH_SYS_DIR, sys);
   manager.init();
   driver.setPreambleLength(8);
@@ -167,9 +175,9 @@ void loop()
   {
     uint8_t a = Serial.read();
     if (a == 97)
-    {
       send_master(ACK); // This function spends 400ms to compleat
-    }
+    if (a == 98)
+      send_master(FAULT); // This function spends 400ms to compleat
   }
   /*
   The first time you plug we have to wait received the time to sincronize  
@@ -209,6 +217,8 @@ void loop()
       if (millis() - millix >= 4000 || to_sleep) // It is awake for 2 seconds
       {
         Serial.println(" A dormir");
+        // for (uint8_t clear = 0; clear < sizeof(buf); clear++)
+        // buf[clear] = 'z';
         to_sleep = false;
         MODE_AWAKE = false;
         SEND_ACK = true;
@@ -240,8 +250,8 @@ void loop()
         rtc.setAlarmMode(6);
         rtc.setAlarm(30, 0, 0, 0, 0);
         Serial.println("AWAKE MODE");
+        millix = millis();
       }
-      millix = millis();
       delay(10);
     }
   }
@@ -589,22 +599,13 @@ void listen_master() // Listen and actuate in consideration
     }
   }
 }
-void send_master(uint8_t msg)
+void send_master(uint8_t msg) // I just have to send the flash info for getting the ack
 {
   if (msg == ACK)
   {
     Serial.println("I send ack to master");
-    char ack[] = "##OK01##";
-    ack[5] = sys.id - '0';
-    for (int i = 0; i < sizeof(ack); i++)
-      data[i] = ack[i];
-  }
-  else if (msg == FAULT)
-  {
-    Serial.println("##FAULT");
-    char fault[] = "##OK";
-    for (int i = 0; i < sizeof(fault); i++)
-      data[i] = fault[i];
+    for (int i = 0; i < sizeof(sys.ack_msg); i++)
+      data[i] = sys.ack_msg[i];
   }
   manager.sendtoWait(data, 15, SERVER_ADDRESS);
 }
@@ -649,9 +650,9 @@ void buttonInt()
 }
 void print_flash()
 {
-  Serial.print("El valor del ID es: ");
+  Serial.print("The ID value is: ");
   Serial.println(sys.id);
-  Serial.print("El valor de la asignación es: ");
+  Serial.print("The assignated valves are: ");
   Serial.print(sys.assigned_output[0]);
   Serial.print(", ");
   Serial.print(sys.assigned_output[1]);
@@ -660,9 +661,13 @@ void print_flash()
   Serial.print(", ");
   Serial.print(sys.assigned_output[3]);
   Serial.println(" ");
-  Serial.print("El valor del UUID del master es: ");
+  Serial.print("The master UUID is: ");
   Serial.write(sys.master_id[0]);
   Serial.print(" ");
   Serial.write(sys.master_id[1]);
+  Serial.println(" ");
+  Serial.print("The msg of ack is: ");
+  for (int i = 0; i < sizeof(sys.ack_msg); i++)
+    Serial.write(sys.ack_msg[i]);
   Serial.println(" ");
 }
