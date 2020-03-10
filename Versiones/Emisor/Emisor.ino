@@ -115,25 +115,25 @@ void setup()
 void loop()
 {
 
-  //if (!digitalRead(PCINT_PIN))
-  //{
-  //  if (!intButton)
-  //    buttonHandler();
-  //  else
-  //    intButton = false;
-  //}
-  //if (intRtc)
-  //{
-  //  intRtc = false;
-  //  rtcHandle();
-  //}
-  //timer.run();
-  //if (mode)
-  //  rfHandler();
-  //else
-  //  sleepDevice();
-  //pgHandler();
-  ////mqttHandler();
+  if (!digitalRead(PCINT_PIN))
+  {
+    if (!intButton)
+      buttonHandler();
+    else
+      intButton = false;
+  }
+  if (intRtc)
+  {
+    intRtc = false;
+    rtcHandle();
+  }
+  timer.run();
+  if (mode)
+    rfHandler();
+  else
+    sleepDevice();
+  pgHandler();
+  //mqttHandler();
 }
 
 /*******************************************************************   functions     ************************************************************************************/

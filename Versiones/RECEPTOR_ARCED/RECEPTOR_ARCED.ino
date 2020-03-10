@@ -124,14 +124,14 @@ void setup()
 
   // I have to change the flash info for each devise:
   /*
-  sys.id = 2;
+  sys.id = 1;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '1';
   sys.assigned_output[0] = 1;
   sys.assigned_output[1] = 2;
   sys.assigned_output[2] = 3;
   sys.assigned_output[3] = 4;
-  char ack[] = "##OK02##";
+  char ack[] = "##OK55##";
   for (int i = 0; i < sizeof(ack); i++)
     sys.ack_msg[i] = ack[i];
   flash.eraseSector(FLASH_SYS_DIR);

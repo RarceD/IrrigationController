@@ -243,17 +243,18 @@ void loop()
     number_msg_compleatly_sent = radio_waitting_msg.num_message_flags;
     pg_interact_while_radio = false;
 
-    while (counter_syn <= 12) // I try to send the message for 25 times, if I fail print kill me.
+    while (counter_syn <= 15) // I try to send the message for 25 times, if I fail print kill me.
     {
       if (millis() - start >= 500) //500 ms is a nice number
       {
         prepare_message(); // This function spends 400ms to compleat
         counter_syn++;
       }
-      listening_pg(); // This
+      listening_pg();                                         // Listen all the topics
+      manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS); //Send to the receivers
     }
 
-    if (pg_interact_while_radio)
+    if (!pg_interact_while_radio)
     {
       pg_interact_while_radio = false;
       for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
@@ -593,8 +594,7 @@ void prepare_message()
     else if (radio_waitting_msg.request_STOP_ALL[msg])
       send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
   }
-  //radio_waitting_msg.num_message_flags = 0;
-  manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
+  radio_waitting_msg.num_message_flags = 0;
 }
 void check_time()
 {
@@ -1286,9 +1286,12 @@ void listening_pg()
     if (pg.indexOf("MANVALV START") > 0)
     {
       Serial.println("ES EL COMANDO DE ABRIR VALVULA MANUAL");
-      uint8_t valve_number = (pgData[pg.indexOf("MANVALV START") + 14] - '0') * 10 + (pgData[pg.indexOf("MANVALV START") + 15] - '0');
-      uint8_t valve_time_hour = (pgData[pg.indexOf("MANVALV START") + 14 + 3] - '0') * 10 + (pgData[pg.indexOf("MANVALV START") + 15 + 3] - '0');
-      uint8_t valve_time_min = (pgData[pg.indexOf("MANVALV START") + 14 + 3 + 2] - '0') * 10 + (pgData[pg.indexOf("MANVALV START") + 15 + 3 + 2] - '0');
+      char valve_num_aux[2];
+      valve_num_aux[0] = pgData[pg.indexOf("MANVALV START") + 14];
+      valve_num_aux[1] = pgData[pg.indexOf("MANVALV START") + 15];
+      uint8_t valve_number = hex2int(valve_num_aux[0]) * 16 + hex2int(valve_num_aux[1]);
+      uint8_t valve_time_hour = hex2int(pgData[pg.indexOf("MANVALV START") + 14 + 3]) * 10 + hex2int(pgData[pg.indexOf("MANVALV START") + 15 + 3]);
+      uint8_t valve_time_min = hex2int(pgData[pg.indexOf("MANVALV START") + 14 + 3 + 2]) * 10 + hex2int(pgData[pg.indexOf("MANVALV START") + 15 + 3 + 2]);
       Serial.print(valve_number);
       Serial.print(" valvula - ");
       Serial.print(valve_time_hour);
@@ -1432,6 +1435,22 @@ void listening_pg()
       radio_waitting_msg.request_STOP_ALL[radio_waitting_msg.num_message_flags++] = true;
     }
   }
+}
+void printbinchar(char character)
+{
+  char output[9];
+  itoa(character, output, 2);
+  printf("%s\n", output);
+}
+uint8_t hex2int(char ch) // For converting the manual valve action
+{
+  if (ch >= '0' && ch <= '9')
+    return ch - '0';
+  if (ch >= 'A' && ch <= 'F')
+    return ch - 'A' + 10;
+  if (ch >= 'a' && ch <= 'f')
+    return ch - 'a' + 10;
+  return -1;
 }
 
 String getValue(String data, char separator, int index)
