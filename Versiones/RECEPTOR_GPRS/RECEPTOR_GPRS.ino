@@ -173,21 +173,24 @@ void loop()
   /*
   The first time you plug we have to wait received the time to sincronize  
   */
+  /*
   if (first_start_syn)
   {
-    if (manager.available()) // Detect radio activity and set a timer for waking up at 00
-    {
-      //start = millis();
-      Serial.println("FIRST TRY");
-      uint8_t len = sizeof(buf);
-      manager.recvfromAck(buf, &len);
-      listen_master(); //When activity is detected listen the master
-      Serial.println("ESPERA");
-      delay(500);
-    }
-    jam.ledBlink(LED_SETUP, 500);
+    */
+  if (manager.available()) // Detect radio activity and set a timer for waking up at 00
+  {
+    //start = millis();
+    uint8_t len = sizeof(buf);
+    manager.recvfromAck(buf, &len);
+    listen_master(); //When activity is detected listen the master
+    Serial.println("DONE");
+    delay(500);
   }
+  // jam.ledBlink(LED_SETUP, 500);
+  // }
   // When is syn there are 3 modes: SLEEP, AWAKE and SEND_ACK
+
+  /*
   else
   {
     if (MODE_AWAKE)
@@ -246,6 +249,7 @@ void loop()
       delay(10);
     }
   }
+  */
 }
 
 void chargeCapacitor()
