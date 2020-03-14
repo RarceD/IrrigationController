@@ -1,0 +1,70 @@
+// "uuid_prueba_1_10": true
+{
+    "id": 2970,
+    "prog": "A",
+    "starts": [
+        "08:40"
+    ],
+    "week_day": [
+        1,
+        2,
+        3,
+        4,
+        5
+    ]
+}
+
+{
+    "id": 2971,
+    "prog": "A",
+    "starts": [
+        "08:40",
+        "08:42"
+    ],
+    "week_day": [
+        1,
+        2,
+        3,
+        7
+    ]
+}
+{
+    "id": 2972,
+    "prog": "A",
+    "action": 1
+}
+
+{
+    "id": 2978,
+    "valves": [
+        {
+            "v": 1,
+            "action": 1
+        },
+        {
+            "v": 2,
+            "action": 0
+        }
+    ]
+}
+
+
+{
+    "id": 2979,
+    "success": true
+}
+// En el oasis/app
+{
+    "id": 3019,
+    "oasis": [
+        {
+            "id": 0,
+            "assign": [
+                1,
+                2,
+                2,
+                4
+            ]
+        }
+    ]
+}
