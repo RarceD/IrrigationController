@@ -18,14 +18,13 @@
 #define DPRINTLN(...) Serial.println(__VA_ARGS__)
 
 #define LOG(...) Serial.print(__VA_ARGS__)
-#define LOGLN(...) Serial.print(__VA_ARGS__)
+#define LOGLN(...) Serial.println(__VA_ARGS__)
 
 #define MAX_NODE_NUMBER 7
 #define MAX_MANUAL_TIMERS 120
 #define UUID_LENGTH 16
 #define TIME_RESPOSE 50000
 #define MAX_NUM_MESSAGES 15
-#define MAX_JSON_SIZE 250
 
 /******************************************************************* debug ********************************************************************************************/
 #define RF_RST 27
@@ -45,14 +44,6 @@
 #define PCINT digitalPinToPCMSKbit(PCINT_PIN)
 #define PCPIN *portInputRegister(digitalPinToPort(PCINT_PIN))
 /******************************************************************* declarations  ************************************************************************************/
- const char apn[] = "wlapn.com";
-// const char apn[] = "airtelwap.es";
-
-
-// const char user[] = "vyr";
-// const char pass[] = "vyr";
-const char user[] = "vyr";
-const char pass[] = "vyr";
 
 typedef enum
 { // This enum contains the possible actions
@@ -201,7 +192,7 @@ void setup()
   //rtc.setAlarm(0, 30, 0, 0, 0);
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
-  //rtc.setToCompilerTime();
+  // rtc.setToCompilerTime();
 
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
@@ -227,11 +218,12 @@ void setup()
   delay(5);
   millix = millis();
 }
+bool ones_time;
+bool gprs_on = true, mode = false, comError[MAX_CHILD];
 
 /******************************************************************* main program  ************************************************************************************/
 void loop()
 {
-
   mqttClient.loop();
   if (!mqttClient.connected())
   {
@@ -240,7 +232,10 @@ void loop()
     delay(5);
   }
   // listening_pg();
-  if (millis() - millix >= 20000)
+
+  /*
+
+if (millis() - millix >= 20000)
   {
     millix = millis();
     Serial.println("Alive");
@@ -256,7 +251,70 @@ void loop()
     root.printTo(json);
     //I publis the succes msg
     mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)json, strlen(json), false);
-  }
+    // if (ones_time)
+    // {
+    //   cmd_start_manvalv[16] = '0';
+    //   cmd_start_manvalv[17] = '1';
+    //   cmd_start_manvalv[19] = '0';
+    //   cmd_start_manvalv[20] = '1';
+    //   cmd_start_manvalv[21] = '0';
+    //   cmd_start_manvalv[22] = '1';
+    //   pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
+    //   ones_time = false;
+    // }
+    // else
+    // {
+    //   cmd_stop_manvalv[15] = '0';
+    //   cmd_stop_manvalv[16] = '1';
+    //   pgCommand(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
+    //   ones_time = true;
+    // }
+    /*
+    uint16_t b, c;
+
+    analogReference(INTERNAL);
+    for (i = 0; i < 3; i++)
+    {
+      b = analogRead(PA0);
+      delay(1);
+    }
+    analogReference(DEFAULT);
+    for (i = 0; i < 3; i++)
+    {
+      c = analogRead(PA0);
+      delay(1);
+    }
+    Serial.print(F("Voltaje Vout: "));
+    Serial.println(b * 0.0190 - 2.0);
+    Serial.print(F("Voltaje Vin:  "));
+    Serial.println((b * 2.5132) / c);
+    Serial.print(F("Battery: "));
+    Serial.print(analogRead(A5) / 1024 * c);
+    Serial.println(F("V"));
+
+    // Esta mierda no funciona
+    uint16_t b, c;
+    analogReference(INTERNAL);
+    for (i = 0; i < 3; i++)
+    {
+      b = analogRead(PA0);
+      delay(1);
+    }
+    analogReference(DEFAULT);
+    for (i = 0; i < 3; i++)
+    {
+      c = analogRead(PA0);
+      delay(1);
+    }
+    Serial.print(F("Voltaje Vout: "));
+    Serial.println(b * 0.0190);
+    Serial.print(F("Voltaje Vin:  "));
+    Serial.println((b * 2.5132) / c);
+
+    Serial.print(F("Battery: "));
+    Serial.println(batLevel());
+}
+    */
 }
 
 /*******************************************************************   functions     ************************************************************************************/
@@ -308,7 +366,7 @@ void connectSIM()
 
   Serial.print("Connecting to ");
   Serial.print(apn);
-  if (!modem.gprsConnect(apn, user, pass))
+  if (!modem.gprsConnect(apn, user_apn, pass_apn))
   {
     Serial.println(" fail");
     while (true)
@@ -322,13 +380,17 @@ void connectMqtt()
 {
   String topic;
 
-  String clientId = "Jam-Idea" + modem.getIMEI();
-  mqttClient.setServer("mqtt.pre.hydro-plus.es", 1883);
+  String clientId = "Arced" + modem.getIMEI();
+  mqttClient.setServer(server_mqtt, 1883);
   mqttClient.setCallback(mqttCallback);
   while (!mqttClient.connected())
   {
-    if (mqttClient.connect(clientId.c_str(), "hydroplus", "vyrsa"))
-      mqttClient.subscribe("oasis-gprs");
+    if (mqttClient.connect(clientId.c_str(), user_mqtt, pass_mqtt))
+    {
+      mqttClient.subscribe(String(sys.devUuid).c_str());
+      topic = String(sys.devUuid) + "/+/app";
+      mqttClient.subscribe(topic.c_str());
+    }
     else
     {
       Serial.println("Trying to connect to MQTT...");
@@ -337,112 +399,167 @@ void connectMqtt()
   }
   Serial.println("Successfully connected to MQTT");
   //I suscribe to all the topics
-  topic = String(sys.devUuid);
-  mqttClient.subscribe(topic.c_str());
-  mqttClient.subscribe("uuid_prueba_1_10/manvalve/app");
-  mqttClient.subscribe("uuid_prueba_1_10/manprg/app");
-  mqttClient.subscribe("uuid_prueba_1_10/program/app");
-  mqttClient.subscribe("uuid_prueba_1_10/oasis/app");
 }
 /*
 this callback function is called everytime a subscription topic message is received
 */
 void mqttCallback(char *topic, byte *payload, unsigned int length)
 {
-  String sTopic, jsParsed, str, aux;
+  uint32_t dir;
   char json[MAX_JSON_SIZE];
-
-  String topicStr = topic;
+  String sTopic, jsParsed, str, aux;
+  uint8_t i, id, len, val, h, mn, prevChildValves[4];
   DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
+  JsonObject &root = jsonBuffer.createObject();
+  // root.set("id", parsed["id"]);
 
-  //First I create the msg in correct format and the printed to the console
+  if (!length)
+    return;
   jsParsed = jam.byteArrayToString(payload, length);
-  Serial.println(jsParsed.c_str());
   JsonObject &parsed = jsonBuffer.parseObject(jsParsed);
+  DPRINT("Mqtt received: ");
+  DPRINTLN(jsParsed.c_str());
+
+  sTopic = String(topic);
 
   // Then I identify the topic related with
-  if (topicStr == (String(sys.devUuid) + "/manvalve/app"))
+  if (sTopic.indexOf("manvalve") != -1)
   {
     Serial.println("Publish in /manvalve/app");
     //I firts of all parse the message
     JsonArray &valves = parsed["valves"];
     //I obtein the values of the parser info:
     String valve_time;
-    int valve_number, valve_action, valve_min, valve_hours;
-    //Start the game:
-    valve_number = valves[0]["v"].as<int>();
-    valve_action = valves[0]["action"].as<int>();
+    int valve_number[4], valve_action[4], valve_min[4], valve_hours[4];
     bool send_ack = false; // This is for sendding ack to the web feedback
-
-    if (valve_action == 1) // If I have to open then I have to obtein the time
+    //Start the game:
+    for (uint8_t index_oasis = 0; index_oasis < valves.size(); index_oasis++)
     {
-      send_ack = true;
-      valve_time = valves[0]["time"].as<String>();
-      // I parse the valve time
-      valve_hours = (valve_time.charAt(0) - '0') * 10 + (valve_time.charAt(1) - '0');
-      valve_min = (valve_time.charAt(3) - '0') * 10 + (valve_time.charAt(4) - '0');
-      ///////////////////////////////////////////////////////////////////
-      radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
-      radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number;
-      radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = valve_hours;
-      radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = valve_min;
-    }
-    else if (valve_action == 0)
-    {
-      send_ack = true;
-      radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
-      radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number;
-      radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
-      radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
-    }
+      valve_number[index_oasis] = valves[index_oasis]["v"].as<int>();
+      valve_action[index_oasis] = valves[index_oasis]["action"].as<int>();
+      if (valve_action[index_oasis] == 1) // If I have to open then I have to obtein the time
+      {
+        send_ack = true;
+        valve_time = valves[index_oasis]["time"].as<String>();
+        // I parse the valve time
+        valve_hours[index_oasis] = (valve_time.charAt(0) - '0') * 10 + (valve_time.charAt(1) - '0');
+        valve_min[index_oasis] = (valve_time.charAt(3) - '0') * 10 + (valve_time.charAt(4) - '0');
+        ///////////////////////////////////////////////////////////////////
+        LOGLN(" ");
+        LOG("El valor de válvula es la:");
+        LOGLN(valve_number[index_oasis]);
+        LOG("El tiempo que queda es de: ");
+        LOG(valve_hours[index_oasis]);
+        LOG(":");
+        LOGLN(valve_min[index_oasis]);
+        LOGLN(" ");
 
+        // radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
+        // radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number[index_oasis];
+        // radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = valve_hours[index_oasis];
+        // radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = valve_min[index_oasis];
+      }
+      else if (valve_action[index_oasis] == 0)
+      {
+        send_ack = true;
+        LOG("APAGAR LA:");
+        LOGLN(valve_number[index_oasis]);
+        // radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
+        // radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number[index_oasis];
+        // radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
+        // radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
+      }
+    }
     if (send_ack)
     {
       //Then I create a json object just for send a ack to the web
-      JsonObject &root = jsonBuffer.createObject();
-      root.set("id", parsed["id"]);
+      // JsonObject &root = jsonBuffer.createObject();
+      // root.set("id", parsed["id"]);
       root.set("success", "true");
       root.printTo(json);
       //I publis the succes msg
       mqttClient.publish((String(sys.devUuid) + "/manvalve").c_str(), (const uint8_t *)json, strlen(json), false);
 
       //I send via radio to the receiver
-      prepare_message();
-      manager.sendtoWait(data, 50, CLIENT_ADDRESS);
+      //prepare_message();
+      //manager.sendtoWait(data, 50, CLIENT_ADDRESS);
     }
   }
-  else if (topicStr == String(sys.devUuid) + "/manprg/app")
+  else if (sTopic.indexOf("manprog") != -1)
   {
-    Serial.println("Publish in  /manprg/app");
+    Serial.println("Publish in  /manprog/app");
     //I obtein the values of the parser info:
     uint8_t activate = parsed["action"];
+    Serial.println(activate);
     String manual_program;
     manual_program = parsed["prog"].as<String>();
-    // char a = ;
-    if (manual_program.charAt(0) == 'A' && activate == 1)
-      Serial.println("Activate A program");
-    else
-      Serial.println("Desactivate A program");
+    Serial.println(manual_program);
+
+    if (manual_program.charAt(0) == 'A')
+      if (activate == 1)
+        Serial.println("Activate A program");
+      else
+        Serial.println("Desactivate A program");
+    else if (manual_program.charAt(0) == 'B')
+      if (activate == 1)
+        Serial.println("Activate B program");
+      else
+        Serial.println("Desactivate B program");
+    else if (manual_program.charAt(0) == 'C')
+      if (activate == 1)
+        Serial.println("Activate C program");
+      else
+        Serial.println("Desactivate C program");
+    else if (manual_program.charAt(0) == 'D')
+      if (activate == 1)
+        Serial.println("Activate D program");
+      else
+        Serial.println("Desactivate D program");
+    else if (manual_program.charAt(0) == 'E')
+      if (activate == 1)
+        Serial.println("Activate E program");
+      else
+        Serial.println("Desactivate E program");
+    else if (manual_program.charAt(0) == 'F')
+      if (activate == 1)
+        Serial.println("Activate F program");
+      else
+        Serial.println("Desactivate F program");
+
+    root.set("id", parsed["id"]);
+    root.set("success", "true");
+    root.printTo(json);
+    //I publis the succes msg
+    mqttClient.publish((String(sys.devUuid) + "/manprog").c_str(), (const uint8_t *)json, strlen(json), false);
   }
-  /*
-  else*/
-  if (topicStr == String(sys.devUuid) + "/oasis/app")
+  else if (sTopic.indexOf("oasis") != -1)
   {
-    Serial.println("Publish in /oasis/app assignation way");
+    Serial.println("Publish in /oasis/app");
     JsonArray &oasis = parsed["oasis"];
-    Serial.println("the value of the assignations are:");
+    Serial.println("The value of the assignations are:");
     uint8_t assigned_id[4];
-    uint8_t ide = oasis[0]["id"];
+    uint8_t ide[15];
+    for (uint8_t oasis_num = 0; oasis_num < oasis.size(); oasis_num++)
+    {
+      ide[oasis_num] = oasis[oasis_num]["id"];
+      LOG("El oasis ");
+      LOGLN(ide[oasis_num]);
+      LOG("Tiene Asignadas las siguientes salidas: ");
+      for (uint8_t d = 0; d < sizeof(assigned_id); d++)
+      {
+        assigned_id[d] = oasis[oasis_num]["assign"][d];
+        LOG(assigned_id[d]);
+        LOG(", ");
+      }
+      LOGLN("");
+    }
 
-    for (int d = 0; d < sizeof(assigned_id); d++)
-      assigned_id[d] = oasis[0]["assign"][d];
-
-    radio_waitting_msg.request_ASSIGNED_VALVES[radio_waitting_msg.num_message_flags] = true;
-    radio_waitting_msg.assigned_info[0][radio_waitting_msg.num_message_flags] = ide-1;
-    radio_waitting_msg.assigned_info[1][radio_waitting_msg.num_message_flags] = assigned_id[0]-1;
-    radio_waitting_msg.assigned_info[2][radio_waitting_msg.num_message_flags] = assigned_id[1]-1;
-    radio_waitting_msg.assigned_info[3][radio_waitting_msg.num_message_flags] = assigned_id[2]-1;
-    radio_waitting_msg.assigned_info[4][radio_waitting_msg.num_message_flags] = assigned_id[3]-1;
+    // radio_waitting_msg.request_ASSIGNED_VALVES[radio_waitting_msg.num_message_flags] = true;
+    // radio_waitting_msg.assigned_info[0][radio_waitting_msg.num_message_flags] = ide - 1;
+    // radio_waitting_msg.assigned_info[1][radio_waitting_msg.num_message_flags] = assigned_id[0] - 1;
+    // radio_waitting_msg.assigned_info[2][radio_waitting_msg.num_message_flags] = assigned_id[1] - 1;
+    // radio_waitting_msg.assigned_info[3][radio_waitting_msg.num_message_flags] = assigned_id[2] - 1;
+    // radio_waitting_msg.assigned_info[4][radio_waitting_msg.num_message_flags] = assigned_id[3] - 1;
     //I send via radio to the receiver
     JsonObject &root = jsonBuffer.createObject();
     root.set("id", parsed["id"]);
@@ -454,9 +571,30 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     prepare_message();
     manager.sendtoWait(data, 50, CLIENT_ADDRESS);
   }
-}
+  else if (sTopic.indexOf("program") != -1)
+  {
+    String manual_program = parsed["prog"].as<String>();
+    JsonArray &starts = parsed["starts"];
 
-void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
+    String startting_time = starts[0].as<String>();
+    LOGLN(startting_time);
+     startting_time = starts[1].as<String>();
+    LOGLN(startting_time);
+     startting_time = starts[2].as<String>();
+    LOGLN(startting_time);
+    LOGLN(manual_program);
+
+    JsonObject &root = jsonBuffer.createObject();
+    root.set("id", parsed["id"]);
+    root.set("success", "true");
+    root.printTo(json);
+    //I publis the succes msg
+    mqttClient.publish((String(sys.devUuid) + "/oasis").c_str(), (const uint8_t *)json, strlen(json), false);
+
+
+  }
+}
+void send_nodo_rf(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
 {
   //First write the destination of the message:
   bool f_man_valve = false, f_time = false, f_asigned = false, f_stop = false, f_manual = false, f_full = false;
@@ -650,7 +788,6 @@ void listening_pg()
       //Serial.println(radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++]);
 
       prepare_message();
-      //send_nodo(1, UUID_1, REQUEST_MANUAL, valve_number, valve_time_hour, valve_time_min, asignacion);
     }
     if (pg.indexOf("MANVALV STOP") > 0)
     {
@@ -823,14 +960,14 @@ void prepare_message()
   for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++)
   {
     if (radio_waitting_msg.request_MANUAL[msg])
-      send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
+      send_nodo_rf(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
     else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
     {
       char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
-      send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
+      send_nodo_rf(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
     }
     else if (radio_waitting_msg.request_STOP_ALL[msg])
-      send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
+      send_nodo_rf(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
   }
   radio_waitting_msg.num_message_flags = 0;
   manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
@@ -888,7 +1025,6 @@ void check_time()
 {
 
   //I sleep the device for the first
-
   //Serial.print("check_time: ");
   rtc.updateTime();
   //Serial.println(rtc.stringTime());
@@ -985,4 +1121,50 @@ void print_flash()
   for (int a = 0; a < UUID_LEN; a++)
     Serial.write(sys.devUuid[a]);
   Serial.println(" ");
+}
+
+uint8_t batLevel()
+{
+  float res;
+  uint8_t a;
+  uint16_t b;
+  ADCSRA |= (1 << 7);
+  analogReference(INTERNAL);
+  for (a = 0; a < 5; a++)
+  {
+    b = analogRead(VREF_IN);
+    delay(1);
+  }
+  res = -0.0186 * pow(b, 2);
+  res += 8.7291 * b - 922;
+  if (res < 0)
+    res = 0;
+  if (res > 100)
+    res = 100;
+  return (res);
+}
+void pgCommand(uint8_t command[], uint8_t len)
+{
+
+  uint32_t millix;
+  uint8_t i, attempt = 3;
+  jam.calcrc((char *)command, len - 2);
+
+  while (attempt)
+  {
+    if (gprs_on)
+      mqttClient.loop();
+    softSerial.write(command, len); //send command to PG
+    millix = millis();              //start millis count
+    while ((millis() - millix) < PG_TIMEOUT)
+      ;                                        //wait one second
+    i = 0;                                     //initialize pgdata index
+    while (softSerial.available())             //while bytes available in serial port
+      pgData[i++] = softSerial.read();         //read it
+    if ((i == ACK_SIZE) && (pgData[2] == 'N')) //if is a not acknowledge message
+      attempt--;                               //try again                                                                              //means sucess replay
+    else                                       //otherwise
+      break;
+  }
+  pgData[i - 1] = '\0';
 }
