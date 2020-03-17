@@ -204,6 +204,13 @@ void loop()
   */
   listening_pg();
 
+  /*
+    The system wakes up at X:55 and start sendding to Oasis
+    Oasis wakes at X:00 and listen for 2 second, if in this time receive something sleep
+                                                 if it doesn't sleep at X:02
+    Oasis wakes up at X:30 and send ACK to master
+  */
+
   if (!digitalRead(PCINT_PIN))
   {
     Serial.println("BUTTON PRESSED");

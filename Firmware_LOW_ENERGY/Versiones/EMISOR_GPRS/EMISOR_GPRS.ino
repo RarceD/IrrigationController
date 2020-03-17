@@ -11,6 +11,9 @@
 #include <SimpleTimer.h>
 #include <SoftwareSerial.h>
 
+
+#include <JamSleep.h>
+
 #define CLIENT_ADDRESS 3
 #define SERVER_ADDRESS 2
 
@@ -141,6 +144,9 @@ uint8_t index_prog_A, index_prog_B, index_prog_C, index_prog_D, index_prog_E, in
 bool start_programA, start_programB, start_programC, start_programD, start_programE, start_programF;
 bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
 
+bool ones_time;
+bool gprs_on = true, mode = false, comError[MAX_CHILD];
+
 uint32_t start = 0;
 uint8_t counter_syn, counter_time_sms;
 
@@ -186,15 +192,15 @@ void setup()
   SWire.begin();
   rtc.begin();
   rtc.set24Hour();
-  rtc.setAlarmMode(0);
-  rtc.setAlarmMode(6);
-  rtc.setAlarm(10, 0, 0, 0, 0);
-  //rtc.setAlarm(0, 30, 0, 0, 0);
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
+  // rtc.setAlarmMode(0);
+  rtc.setAlarmMode(6);
+  rtc.setAlarm(10, 0, 0, 0, 0);
+  attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
+  //rtc.setAlarm(0, 30, 0, 0, 0);
   // rtc.setToCompilerTime();
 
-  attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
   Serial.println(rtc.stringTime());
   Serial.println(rtc.stringDate());
@@ -215,11 +221,16 @@ void setup()
   print_flash();
   connectSIM();
   connectMqtt();
-  delay(5);
+  delay(50);
   millix = millis();
+  // char json[15];
+  // DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
+  // JsonObject &root = jsonBuffer.createObject();
+  // root.set("alive", "true");
+  // root.printTo(json);
+  // mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)json, strlen(json), false);
 }
-bool ones_time;
-bool gprs_on = true, mode = false, comError[MAX_CHILD];
+
 
 /******************************************************************* main program  ************************************************************************************/
 void loop()
@@ -233,43 +244,54 @@ void loop()
   }
   // listening_pg();
 
-  /*
-
-if (millis() - millix >= 20000)
+  if (millis() - millix >= 20000) // Printing that I am not dead
   {
-    millix = millis();
     Serial.println("Alive");
-    char json[MAX_JSON_SIZE];
-    DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
-    JsonObject &root = jsonBuffer.createObject();
-    root.set("alive", "true");
-    int num_random = random(1, 1230);
-    char buf[16];
-    sprintf(buf, "%d", num_random);
-    const char *p = buf;
-    root.set("random", p);
-    root.printTo(json);
-    //I publis the succes msg
-    mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)json, strlen(json), false);
-    // if (ones_time)
-    // {
-    //   cmd_start_manvalv[16] = '0';
-    //   cmd_start_manvalv[17] = '1';
-    //   cmd_start_manvalv[19] = '0';
-    //   cmd_start_manvalv[20] = '1';
-    //   cmd_start_manvalv[21] = '0';
-    //   cmd_start_manvalv[22] = '1';
-    //   pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
-    //   ones_time = false;
-    // }
-    // else
-    // {
-    //   cmd_stop_manvalv[15] = '0';
-    //   cmd_stop_manvalv[16] = '1';
-    //   pgCommand(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
-    //   ones_time = true;
-    // }
-    /*
+    char send[] = "NOT_DEAD";
+    mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)send, 9, false);
+    millix = millis();
+    //open_valve_pg(true, 1, 2, 5);
+    //pgCommand(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
+    //cmd_start_manvalv[16] = '0';
+    //cmd_start_manvalv[17] = '1';
+    //cmd_start_manvalv[19] = '0';
+    //cmd_start_manvalv[20] = '1';
+    //cmd_start_manvalv[21] = '0';
+    //cmd_start_manvalv[22] = '1';
+    //pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
+    //delay(4000);
+    //open_valve_pg(false, 1, 2, 5);
+  }
+  /*
+  if (Serial.available())
+  {
+    int a = Serial.read();
+    Serial.println(a);
+    if (a = 97)
+    {
+      Serial.println("a");
+    }
+  }
+  */
+  // if (ones_time)
+  // {
+  // }
+  //   cmd_start_manvalv[16] = '0';
+  //   cmd_start_manvalv[17] = '1';
+  //   cmd_start_manvalv[19] = '0';
+  //   cmd_start_manvalv[20] = '1';
+  //   cmd_start_manvalv[21] = '0';
+  //   cmd_start_manvalv[22] = '1';
+  //   pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
+  //   ones_time = false;
+  // else
+  // {
+  //   cmd_stop_manvalv[15] = '0';
+  //   cmd_stop_manvalv[16] = '1';
+  //   pgCommand(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
+  //   ones_time = true;
+  // }
+  /*
     uint16_t b, c;
 
     analogReference(INTERNAL);
@@ -405,12 +427,10 @@ this callback function is called everytime a subscription topic message is recei
 */
 void mqttCallback(char *topic, byte *payload, unsigned int length)
 {
-  uint32_t dir;
   char json[MAX_JSON_SIZE];
-  String sTopic, jsParsed, str, aux;
+  String sTopic, jsParsed;
   uint8_t i, id, len, val, h, mn, prevChildValves[4];
   DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
-  JsonObject &root = jsonBuffer.createObject();
   // root.set("id", parsed["id"]);
 
   if (!length)
@@ -419,6 +439,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   JsonObject &parsed = jsonBuffer.parseObject(jsParsed);
   DPRINT("Mqtt received: ");
   DPRINTLN(jsParsed.c_str());
+  String identifier = parsed["id"].as<String>(); // This is for the sendding function app
 
   sTopic = String(topic);
 
@@ -431,7 +452,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     //I obtein the values of the parser info:
     String valve_time;
     int valve_number[4], valve_action[4], valve_min[4], valve_hours[4];
-    bool send_ack = false; // This is for sendding ack to the web feedback
     //Start the game:
     for (uint8_t index_oasis = 0; index_oasis < valves.size(); index_oasis++)
     {
@@ -439,7 +459,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       valve_action[index_oasis] = valves[index_oasis]["action"].as<int>();
       if (valve_action[index_oasis] == 1) // If I have to open then I have to obtein the time
       {
-        send_ack = true;
         valve_time = valves[index_oasis]["time"].as<String>();
         // I parse the valve time
         valve_hours[index_oasis] = (valve_time.charAt(0) - '0') * 10 + (valve_time.charAt(1) - '0');
@@ -461,7 +480,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       }
       else if (valve_action[index_oasis] == 0)
       {
-        send_ack = true;
         LOG("APAGAR LA:");
         LOGLN(valve_number[index_oasis]);
         // radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
@@ -470,20 +488,11 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         // radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
       }
     }
-    if (send_ack)
-    {
-      //Then I create a json object just for send a ack to the web
-      // JsonObject &root = jsonBuffer.createObject();
-      // root.set("id", parsed["id"]);
-      root.set("success", "true");
-      root.printTo(json);
-      //I publis the succes msg
-      mqttClient.publish((String(sys.devUuid) + "/manvalve").c_str(), (const uint8_t *)json, strlen(json), false);
+    send_web("/manvalve", sizeof("/manvalve"), identifier.c_str());
 
-      //I send via radio to the receiver
-      //prepare_message();
-      //manager.sendtoWait(data, 50, CLIENT_ADDRESS);
-    }
+    //I send via radio to the receiver
+    //prepare_message();
+    //manager.sendtoWait(data, 50, CLIENT_ADDRESS);
   }
   else if (sTopic.indexOf("manprog") != -1)
   {
@@ -525,12 +534,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         Serial.println("Activate F program");
       else
         Serial.println("Desactivate F program");
-
-    root.set("id", parsed["id"]);
-    root.set("success", "true");
-    root.printTo(json);
-    //I publis the succes msg
-    mqttClient.publish((String(sys.devUuid) + "/manprog").c_str(), (const uint8_t *)json, strlen(json), false);
+    send_web("/manprog", sizeof("/manprog"), identifier.c_str());
   }
   else if (sTopic.indexOf("oasis") != -1)
   {
@@ -553,7 +557,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       }
       LOGLN("");
     }
-
+    send_web("/oasis", sizeof("/oasis"), identifier.c_str());
     // radio_waitting_msg.request_ASSIGNED_VALVES[radio_waitting_msg.num_message_flags] = true;
     // radio_waitting_msg.assigned_info[0][radio_waitting_msg.num_message_flags] = ide - 1;
     // radio_waitting_msg.assigned_info[1][radio_waitting_msg.num_message_flags] = assigned_id[0] - 1;
@@ -561,39 +565,128 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     // radio_waitting_msg.assigned_info[3][radio_waitting_msg.num_message_flags] = assigned_id[2] - 1;
     // radio_waitting_msg.assigned_info[4][radio_waitting_msg.num_message_flags] = assigned_id[3] - 1;
     //I send via radio to the receiver
-    JsonObject &root = jsonBuffer.createObject();
-    root.set("id", parsed["id"]);
-    root.set("success", "true");
-    root.printTo(json);
-    //I publis the succes msg
-    mqttClient.publish((String(sys.devUuid) + "/oasis").c_str(), (const uint8_t *)json, strlen(json), false);
-
-    prepare_message();
-    manager.sendtoWait(data, 50, CLIENT_ADDRESS);
+    // prepare_message();
+    // manager.sendtoWait(data, 50, CLIENT_ADDRESS);
   }
   else if (sTopic.indexOf("program") != -1)
   {
+    //I parse the letter of the program
     String manual_program = parsed["prog"].as<String>();
+    //I parse the array of starts and valves, if there's any
     JsonArray &starts = parsed["starts"];
-
-    String startting_time = starts[0].as<String>();
-    LOGLN(startting_time);
-     startting_time = starts[1].as<String>();
-    LOGLN(startting_time);
-     startting_time = starts[2].as<String>();
-    LOGLN(startting_time);
+    if (starts.success())
+    {
+      LOG("Exists Starts");
+      String str_time;
+      uint8_t time_prog[6][2];
+      for (uint8_t index_starts = 0; index_starts < starts.size(); index_starts++)
+      {
+        str_time = starts[index_starts].as<String>();
+        time_prog[index_starts][0] = (str_time.charAt(0) - '0') * 10 + (str_time.charAt(1) - '0'); //save hours
+        time_prog[index_starts][1] = (str_time.charAt(3) - '0') * 10 + (str_time.charAt(4) - '0'); //save minutes
+        LOG("El valor del arranque ");
+        LOG(index_starts);
+        LOG(" es de: ");
+        LOG(time_prog[index_starts][0]);
+        LOG(":");
+        LOGLN(time_prog[index_starts][1]);
+      }
+    }
+    JsonArray &valves = parsed["valves"];
+    if (valves.success())
+    {
+      LOG("Exists Valves");
+      uint8_t time_valves[128][2]; //This is a huge and ridiculous
+      String irrig_time;           //The string for the 00:00 time format
+      uint8_t number_valves;
+      for (uint8_t index_valves = 0; index_valves < valves.size(); index_valves++)
+      {
+        irrig_time = valves[index_valves]["time"].as<String>();
+        number_valves = valves[index_valves]["v"].as<uint8_t>() - 1;
+        time_valves[number_valves][0] = (irrig_time.charAt(0) - '0') * 10 + (irrig_time.charAt(1) - '0'); //save hours
+        time_valves[number_valves][1] = (irrig_time.charAt(3) - '0') * 10 + (irrig_time.charAt(4) - '0'); //save minutes
+        LOG("Los tiempos de la válvula ");
+        LOG(number_valves + 1);
+        LOG(" son: ");
+        LOG(time_valves[number_valves][0]);
+        LOG(":");
+        LOGLN(time_valves[number_valves][1]);
+      }
+    }
     LOGLN(manual_program);
-
-    JsonObject &root = jsonBuffer.createObject();
-    root.set("id", parsed["id"]);
-    root.set("success", "true");
-    root.printTo(json);
-    //I publis the succes msg
-    mqttClient.publish((String(sys.devUuid) + "/oasis").c_str(), (const uint8_t *)json, strlen(json), false);
-
-
+    send_web("/program", sizeof("/program"), identifier.c_str());
   }
 }
+void send_web(char *topic, unsigned int length, const char *id)
+{
+  String ack_topic = String(topic);
+  String identifier = String(id);
+  char json[MAX_JSON_SIZE];
+
+  DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
+  JsonObject &root = jsonBuffer.createObject();
+  root.set("id", identifier);
+  root.set("success", "true");
+  root.printTo(json);
+
+  mqttClient.publish((String(sys.devUuid) + ack_topic).c_str(), (const uint8_t *)json, strlen(json), false);
+}
+/*
+void open_valve_pg(bool state, uint8_t valve, uint8_t time_hours, uint8_t time_minutes)
+{
+  //First add the number of the valve
+  if (valve > 99)
+  {
+    valve -= 100;
+    cmd_start_manvalv[15] = '1';
+  }
+  else
+    cmd_start_manvalv[15] = '0';
+
+  if (valve > 9)
+  {
+    cmd_start_manvalv[16] = valve / 10 + '0';
+    cmd_start_manvalv[17] = (valve - (valve / 10) * 10) + '0';
+  }
+  else
+  {
+    cmd_start_manvalv[16] = '0';
+    cmd_start_manvalv[17] = valve + '0';
+  }
+  if (state) // I open the valve
+  {
+    //I add the time
+    if (time_hours > 9)
+    {
+      cmd_start_manvalv[19] = '1'; //hours
+      cmd_start_manvalv[20] = (time_hours - 10) + '0';
+    }
+    else
+    {
+      cmd_start_manvalv[19] = '0'; //hours
+      cmd_start_manvalv[20] = time_hours + '0';
+    }
+    if (time_minutes > 9)
+    {
+      cmd_start_manvalv[21] = (time_minutes / 10) + '0';
+      cmd_start_manvalv[22] = (time_minutes - (time_minutes / 10) * 10) + '0'; //minutes
+    }
+    else
+    {
+      cmd_start_manvalv[21] = '0'; //hours
+      cmd_start_manvalv[22] = time_minutes + '0';
+    }
+    // pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
+  }
+  else // I close the valve
+  {
+    cmd_start_manvalv[19] = '0';
+    cmd_start_manvalv[20] = '0';
+    cmd_start_manvalv[21] = '0';
+    cmd_start_manvalv[22] = '0';
+  }
+}
+*/
 void send_nodo_rf(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
 {
   //First write the destination of the message:
