@@ -1,0 +1,97 @@
+// Cambiar asignación de válvulas uuid_prueba_1_10/oasis/app
+    {"id":3055,"oasis":[{"id":0,"assign":[1,6,8,4]},{"id":0,"assign":[12,3,14,15]}]}
+//Activar programas
+    {"id":3042,"prog":"A","action":1}
+//activación de válvulas
+{
+    "id": 2978,
+    "valves": [
+        {
+            "v": 1,
+            "action": 1
+        },
+        {
+            "v": 2,
+            "action": 0
+        }
+    ]
+}
+{
+    "id": 2979,
+    "success": true
+}
+{
+    "id": 3039,
+    "valves": [
+        {
+            "v": 1,
+            "action": 0
+        },
+        {
+            "v": 2,
+            "action": 1,
+            "time": "00:01"
+        },
+        {
+            "v": 3,
+            "action": 1,
+            "time": "00:01"
+        },
+        {
+            "v": 4,
+            "action": 1,
+            "time": "00:01"
+        },
+        {
+            "v": 6,
+            "action": 1,
+            "time": "00:01"
+        }
+    ]
+}
+//HACER PROGRAMAS EN EL TOPIC ::  uuid_prueba_1_10/manprg
+{"id": 3033,"prog": "A","valves": [{"v": 1,"time": "01:00"},{"v": 2, "time": "00:02"},{"v": 3,"time": "00:05"} ]}
+{"id":3056,"prog":"A","valves":[{"v":1,"time":"01:00"},{"v":2,"time":"00:02"},{"v":3,"time":"00:05"},{"v":6,"time":"00:02"},{"v":8,"time":"00:02"},{"v":11,"time":"01:00"}]}
+{"id":3058,"prog":"A","starts":["08:42","11:59","18:06"],"week_day":[1,2,7]}
+{"id":3064,"prog":"A","valves":[{"v":1,"time":"01:00"},{"v":2,"time":"00:02"},{"v":3,"time":"01:05"},{"v":4,"time":"00:00"},{"v":6,"time":"00:02"},{"v":8,"time":"00:02"},{"v":9,"time":"01:00"},{"v":11,"time":"01:12"}]}
+//Al acabar siempre tengo que enviar:
+{
+    "id": 2979,
+    "success": true
+}
+// al hacer de nuevo un programa;
+{
+    "id": 3035,
+    "prog": "B",
+    "water": 100,
+    "valves": [
+        {
+            "v": 1,
+            "time": "01:02"
+        },
+        {
+            "v": 2,
+            "time": "00:03"
+        },
+        {
+            "v": 4,
+            "time": "00:02"
+        }
+    ],
+    "from": "16\/01\/2020",
+    "to": "16\/08\/2021"
+}
+{
+    "id": 3036,
+    "prog": "B",
+    "starts": [
+        "11:50",
+        "13:50"
+    ],
+    "week_day": [
+        1,
+        3,
+        5,
+        6
+    ]
+}
