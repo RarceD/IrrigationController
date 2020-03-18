@@ -11,7 +11,6 @@
 #include <SimpleTimer.h>
 #include <SoftwareSerial.h>
 
-
 #include <JamSleep.h>
 
 #define CLIENT_ADDRESS 3
@@ -168,7 +167,12 @@ void setup()
   oldPort = PCPIN;
   PCMSK |= (1 << PCINT);
   jam.ledBlink(LED_SETUP, 100);
+
   softSerial.begin(9600);
+  // uint8_t buf[] = {0x02, 0xfe, 'S', 'T', 'A', 'R', 'T', ' ', 'M', 'A', 'N', 'V', 'A', 'L', 'V', 0x23, '0', '1', 0x23, '0', '0', '0', '1', 0x23, 0x03, 0, 0};
+  // calcrc((char *)buf, sizeof(buf) - 2);
+  // softSerial.write(buf, sizeof(buf));
+
   flash.powerUp();
   flash.begin();
   /*
@@ -485,6 +489,11 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         // radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number[index_oasis];
         // radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
         // radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
+      }
+      if (valve_number[index_oasis] <= 14) //Check if the valve is for me and then sent to the pg
+      {
+        action_valve_pg(valve_action[index_oasis], valve_number[index_oasis], valve_hours[index_oasis], valve_min[index_oasis]);
+        delay(1500);
       }
     }
     send_web("/manvalve", sizeof("/manvalve"), identifier.c_str());
@@ -1259,4 +1268,98 @@ void pgCommand(uint8_t command[], uint8_t len)
       break;
   }
   pgData[i - 1] = '\0';
+}
+
+int calcrc(char ptr[], int length)
+{
+  char i;
+  int crc = 0;
+
+  while (--length >= 0)
+  {
+    crc = crc ^ (int)*ptr++ << 8;
+    i = 8;
+    do
+    {
+      if (crc & 0x8000)
+        crc = crc << 1 ^ 0x1021;
+      else
+        crc = crc << 1;
+    } while (--i);
+  }
+  *ptr = crc & 0xff;
+  *(++ptr) = crc >> 8;
+  return (crc);
+}
+void action_valve_pg(bool state, uint8_t valve, uint8_t time_hours, uint8_t time_minutes)
+{
+
+  if (state) // I open the valve
+  {
+    //First add the number of the valve;
+    if (valve > 9)
+    {
+      cmd_start_manvalv[16] = valve / 10 + '0';
+      cmd_start_manvalv[17] = (valve - (valve / 10) * 10) + '0';
+    }
+    else
+    {
+      cmd_start_manvalv[16] = '0';
+      cmd_start_manvalv[17] = valve + '0';
+    }
+    //I add the time
+    if (time_hours > 9)
+    {
+      cmd_start_manvalv[19] = '1'; //hours
+      cmd_start_manvalv[20] = (time_hours - 10) + '0';
+    }
+    else
+    {
+      cmd_start_manvalv[19] = '0'; //hours
+      cmd_start_manvalv[20] = time_hours + '0';
+    }
+    if (time_minutes > 9)
+    {
+      cmd_start_manvalv[21] = (time_minutes / 10) + '0';
+      cmd_start_manvalv[22] = (time_minutes - (time_minutes / 10) * 10) + '0'; //minutes
+    }
+    else
+    {
+      cmd_start_manvalv[21] = '0'; //hours
+      cmd_start_manvalv[22] = time_minutes + '0';
+    }
+    calcrc((char *)cmd_start_manvalv, sizeof(cmd_start_manvalv) - 2);
+    softSerial.write(cmd_start_manvalv, sizeof(cmd_start_manvalv));
+    // pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
+  }
+  else // I close the valve
+  {
+    if (valve > 9)
+    {
+      cmd_stop_manvalv[15] = valve / 10 + '0';
+      cmd_stop_manvalv[16] = (valve - (valve / 10) * 10) + '0';
+    }
+    else
+    {
+      cmd_stop_manvalv[15] = '0';
+      cmd_stop_manvalv[16] = valve + '0';
+    }
+    calcrc((char *)cmd_stop_manvalv, sizeof(cmd_stop_manvalv) - 2);
+    softSerial.write(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
+  }
+}
+void action_prog_pg(bool state, char program)
+{
+  if (state)
+  {
+    cmd_start_manprg[15] = program;
+    calcrc((char *)cmd_start_manprg, sizeof(cmd_start_manprg) - 2);
+    softSerial.write(cmd_start_manprg, sizeof(cmd_start_manprg));
+  }
+  else
+  {
+    cmd_stop_manprg[14] = program;
+    calcrc((char *)cmd_stop_manprg, sizeof(cmd_stop_manprg) - 2);
+    softSerial.write(cmd_stop_manprg, sizeof(cmd_stop_manprg));
+  }
 }
