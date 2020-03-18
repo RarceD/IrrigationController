@@ -28,7 +28,6 @@
 #define UUID_LENGTH 16
 #define TIME_RESPOSE 50000
 #define MAX_NUM_MESSAGES 15
-#define aas 1
 
 /******************************************************************* debug ********************************************************************************************/
 #define RF_RST 27
@@ -232,7 +231,6 @@ void setup()
   // mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)json, strlen(json), false);
 }
 
-
 /******************************************************************* main program  ************************************************************************************/
 void loop()
 {
@@ -253,14 +251,14 @@ void loop()
     millix = millis();
     //open_valve_pg(true, 1, 2, 5);
     //pgCommand(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
-    //cmd_start_manvalv[16] = '0';
-    //cmd_start_manvalv[17] = '1';
-    //cmd_start_manvalv[19] = '0';
-    //cmd_start_manvalv[20] = '1';
-    //cmd_start_manvalv[21] = '0';
-    //cmd_start_manvalv[22] = '1';
-    //pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
-    //delay(4000);
+    // cmd_start_manvalv[16] = '0';
+    // cmd_start_manvalv[17] = '1';
+    // cmd_start_manvalv[19] = '0';
+    // cmd_start_manvalv[20] = '1';
+    // cmd_start_manvalv[21] = '0';
+    // cmd_start_manvalv[22] = '1';
+    // pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
+    // //delay(4000);
     //open_valve_pg(false, 1, 2, 5);
   }
   /*
