@@ -253,47 +253,8 @@ void loop()
     char send[] = "NOT_DEAD";
     mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)send, 9, false);
     millix = millis();
-    //open_valve_pg(true, 1, 2, 5);
-    //pgCommand(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
-    // cmd_start_manvalv[16] = '0';
-    // cmd_start_manvalv[17] = '1';
-    // cmd_start_manvalv[19] = '0';
-    // cmd_start_manvalv[20] = '1';
-    // cmd_start_manvalv[21] = '0';
-    // cmd_start_manvalv[22] = '1';
-    // pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
-    // //delay(4000);
-    //open_valve_pg(false, 1, 2, 5);
   }
-  /*
-  if (Serial.available())
-  {
-    int a = Serial.read();
-    Serial.println(a);
-    if (a = 97)
-    {
-      Serial.println("a");
-    }
-  }
-  */
-  // if (ones_time)
-  // {
-  // }
-  //   cmd_start_manvalv[16] = '0';
-  //   cmd_start_manvalv[17] = '1';
-  //   cmd_start_manvalv[19] = '0';
-  //   cmd_start_manvalv[20] = '1';
-  //   cmd_start_manvalv[21] = '0';
-  //   cmd_start_manvalv[22] = '1';
-  //   pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
-  //   ones_time = false;
-  // else
-  // {
-  //   cmd_stop_manvalv[15] = '0';
-  //   cmd_stop_manvalv[16] = '1';
-  //   pgCommand(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
-  //   ones_time = true;
-  // }
+
   /*
     uint16_t b, c;
 
@@ -442,6 +403,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   JsonObject &parsed = jsonBuffer.parseObject(jsParsed);
   DPRINT("Mqtt received: ");
   DPRINTLN(jsParsed.c_str());
+  delay(10);
   String identifier = parsed["id"].as<String>(); // This is for the sendding function app
 
   sTopic = String(topic);
@@ -456,6 +418,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     String valve_time;
     int valve_number[4], valve_action[4], valve_min[4], valve_hours[4];
     //Start the game:
+    send_web("/manvalve", sizeof("/manvalve"), identifier.c_str());
+
     for (uint8_t index_oasis = 0; index_oasis < valves.size(); index_oasis++)
     {
       valve_number[index_oasis] = valves[index_oasis]["v"].as<int>();
@@ -467,14 +431,12 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         valve_hours[index_oasis] = (valve_time.charAt(0) - '0') * 10 + (valve_time.charAt(1) - '0');
         valve_min[index_oasis] = (valve_time.charAt(3) - '0') * 10 + (valve_time.charAt(4) - '0');
         ///////////////////////////////////////////////////////////////////
-        LOGLN(" ");
         LOG("El valor de válvula es la:");
-        LOGLN(valve_number[index_oasis]);
-        LOG("El tiempo que queda es de: ");
+        LOG(valve_number[index_oasis]);
+        LOG("durante ");
         LOG(valve_hours[index_oasis]);
         LOG(":");
         LOGLN(valve_min[index_oasis]);
-        LOGLN(" ");
 
         // radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
         // radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number[index_oasis];
@@ -496,7 +458,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         delay(1500);
       }
     }
-    send_web("/manvalve", sizeof("/manvalve"), identifier.c_str());
 
     //I send via radio to the receiver
     //prepare_message();
@@ -507,42 +468,14 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     Serial.println("Publish in  /manprog/app");
     //I obtein the values of the parser info:
     uint8_t activate = parsed["action"];
-    Serial.println(activate);
+    // Serial.println(activate);
     String manual_program;
     manual_program = parsed["prog"].as<String>();
-    Serial.println(manual_program);
-
-    if (manual_program.charAt(0) == 'A')
-      if (activate == 1)
-        Serial.println("Activate A program");
-      else
-        Serial.println("Desactivate A program");
-    else if (manual_program.charAt(0) == 'B')
-      if (activate == 1)
-        Serial.println("Activate B program");
-      else
-        Serial.println("Desactivate B program");
-    else if (manual_program.charAt(0) == 'C')
-      if (activate == 1)
-        Serial.println("Activate C program");
-      else
-        Serial.println("Desactivate C program");
-    else if (manual_program.charAt(0) == 'D')
-      if (activate == 1)
-        Serial.println("Activate D program");
-      else
-        Serial.println("Desactivate D program");
-    else if (manual_program.charAt(0) == 'E')
-      if (activate == 1)
-        Serial.println("Activate E program");
-      else
-        Serial.println("Desactivate E program");
-    else if (manual_program.charAt(0) == 'F')
-      if (activate == 1)
-        Serial.println("Activate F program");
-      else
-        Serial.println("Desactivate F program");
-    send_web("/manprog", sizeof("/manprog"), identifier.c_str());
+    // I first send it to 
+    send_web("/manprog", sizeof("/manprog"), identifier.c_str()); // I send ack to the app
+    delay(500);
+    action_prog_pg(activate, manual_program.charAt(0)); //I send the command tom PG
+    
   }
   else if (sTopic.indexOf("oasis") != -1)
   {
@@ -1348,9 +1281,9 @@ void action_valve_pg(bool state, uint8_t valve, uint8_t time_hours, uint8_t time
     softSerial.write(cmd_stop_manvalv, sizeof(cmd_stop_manvalv));
   }
 }
-void action_prog_pg(bool state, char program)
+void action_prog_pg(uint8_t state, char program)
 {
-  if (state)
+  if (state == 1)
   {
     cmd_start_manprg[15] = program;
     calcrc((char *)cmd_start_manprg, sizeof(cmd_start_manprg) - 2);
