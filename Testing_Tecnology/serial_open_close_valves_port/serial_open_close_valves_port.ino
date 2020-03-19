@@ -108,6 +108,8 @@ void loop()
       cmd_write_data[17] = '3';
       cmd_write_data[18] = 'B';
       calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+
       softSerial.write(cmd_write_data, sizeof(cmd_write_data));
       for (i = 0; i < sizeof(cmd_write_data); i++)
       {
