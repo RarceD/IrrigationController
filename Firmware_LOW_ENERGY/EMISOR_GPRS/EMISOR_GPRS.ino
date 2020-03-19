@@ -227,6 +227,9 @@ void setup()
   connectMqtt();
   delay(50);
   millix = millis();
+    Serial.print(F("Battery: "));
+  Serial.println(batLevel());
+  delay(10);
   // char json[15];
   // DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
   // JsonObject &root = jsonBuffer.createObject();
@@ -254,53 +257,6 @@ void loop()
     mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)send, 9, false);
     millix = millis();
   }
-
-  /*
-    uint16_t b, c;
-
-    analogReference(INTERNAL);
-    for (i = 0; i < 3; i++)
-    {
-      b = analogRead(PA0);
-      delay(1);
-    }
-    analogReference(DEFAULT);
-    for (i = 0; i < 3; i++)
-    {
-      c = analogRead(PA0);
-      delay(1);
-    }
-    Serial.print(F("Voltaje Vout: "));
-    Serial.println(b * 0.0190 - 2.0);
-    Serial.print(F("Voltaje Vin:  "));
-    Serial.println((b * 2.5132) / c);
-    Serial.print(F("Battery: "));
-    Serial.print(analogRead(A5) / 1024 * c);
-    Serial.println(F("V"));
-
-    // Esta mierda no funciona
-    uint16_t b, c;
-    analogReference(INTERNAL);
-    for (i = 0; i < 3; i++)
-    {
-      b = analogRead(PA0);
-      delay(1);
-    }
-    analogReference(DEFAULT);
-    for (i = 0; i < 3; i++)
-    {
-      c = analogRead(PA0);
-      delay(1);
-    }
-    Serial.print(F("Voltaje Vout: "));
-    Serial.println(b * 0.0190);
-    Serial.print(F("Voltaje Vin:  "));
-    Serial.println((b * 2.5132) / c);
-
-    Serial.print(F("Battery: "));
-    Serial.println(batLevel());
-}
-    */
 }
 
 /*******************************************************************   functions     ************************************************************************************/
@@ -572,62 +528,7 @@ void send_web(char *topic, unsigned int length, const char *id)
 
   mqttClient.publish((String(sys.devUuid) + ack_topic).c_str(), (const uint8_t *)json, strlen(json), false);
 }
-/*
-void open_valve_pg(bool state, uint8_t valve, uint8_t time_hours, uint8_t time_minutes)
-{
-  //First add the number of the valve
-  if (valve > 99)
-  {
-    valve -= 100;
-    cmd_start_manvalv[15] = '1';
-  }
-  else
-    cmd_start_manvalv[15] = '0';
 
-  if (valve > 9)
-  {
-    cmd_start_manvalv[16] = valve / 10 + '0';
-    cmd_start_manvalv[17] = (valve - (valve / 10) * 10) + '0';
-  }
-  else
-  {
-    cmd_start_manvalv[16] = '0';
-    cmd_start_manvalv[17] = valve + '0';
-  }
-  if (state) // I open the valve
-  {
-    //I add the time
-    if (time_hours > 9)
-    {
-      cmd_start_manvalv[19] = '1'; //hours
-      cmd_start_manvalv[20] = (time_hours - 10) + '0';
-    }
-    else
-    {
-      cmd_start_manvalv[19] = '0'; //hours
-      cmd_start_manvalv[20] = time_hours + '0';
-    }
-    if (time_minutes > 9)
-    {
-      cmd_start_manvalv[21] = (time_minutes / 10) + '0';
-      cmd_start_manvalv[22] = (time_minutes - (time_minutes / 10) * 10) + '0'; //minutes
-    }
-    else
-    {
-      cmd_start_manvalv[21] = '0'; //hours
-      cmd_start_manvalv[22] = time_minutes + '0';
-    }
-    // pgCommand(cmd_start_manvalv, sizeof(cmd_start_manvalv));
-  }
-  else // I close the valve
-  {
-    cmd_start_manvalv[19] = '0';
-    cmd_start_manvalv[20] = '0';
-    cmd_start_manvalv[21] = '0';
-    cmd_start_manvalv[22] = '0';
-  }
-}
-*/
 void send_nodo_rf(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
 {
   //First write the destination of the message:
