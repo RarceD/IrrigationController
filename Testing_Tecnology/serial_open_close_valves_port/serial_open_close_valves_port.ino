@@ -97,14 +97,57 @@ void loop()
     }
     if (a == 101) // Press E to change the PG starts
     {
-      uint16_t start_time = time_to_pg_format(0, 2);
-      String mem_time_start = String(start_time, HEX);
-      mem_time_start.toUpperCase();
-      if (mem_time_start.length() != 2)
-        mem_time_start = '0' + mem_time_start;
-      Serial.println(mem_time_start.charAt(1));
-      Serial.println(mem_time_start.charAt(0));
+      uint16_t start_time_hours = 0, start_time_min = 0;
       uint16_t position_starts = 416;
+      String mem_starts_h;
+      uint8_t time_prog[6][2];
+      time_prog[0][0] = 1; //horas arranque 1 programa A
+      time_prog[0][1] = 2; //minutos
+      time_prog[1][0] = 3; //horas arranque 2 programa A
+      time_prog[1][1] = 4; //minutos
+      time_prog[2][0] = 5; //horas arranque 3 programa A
+      time_prog[2][1] = 6; //minutos
+      time_prog[3][0] = 7; //horas arranque 4 programa A
+      time_prog[3][1] = 8; //minutos
+      time_prog[4][0] = 9; //horas arranque 5 programa A
+      time_prog[4][1] = 10; //minutos
+
+      for (int index_complet = 0; index_complet < 5; index_complet++)
+      {
+        delay(800);
+        start_time_hours = time_to_pg_format(0, time_prog[index_complet][0]);
+        String mem_time_start_hours = String(start_time_hours, HEX);
+        mem_time_start_hours.toUpperCase();
+        if (mem_time_start_hours.length() != 2)
+          mem_time_start_hours = '0' + mem_time_start_hours;
+         mem_starts_h = String(position_starts + 0, HEX);
+        mem_starts_h.toUpperCase();
+        cmd_write_data[13] = mem_starts_h.charAt(0);
+        cmd_write_data[14] = mem_starts_h.charAt(1);
+        cmd_write_data[15] = mem_starts_h.charAt(2);
+        cmd_write_data[17] = mem_time_start_hours.charAt(0);
+        cmd_write_data[18] = mem_time_start_hours.charAt(1);
+        calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+        softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+        delay(800);
+        start_time_min = time_to_pg_format(0, time_prog[index_complet][1]);
+        String mem_time_start_min = String(start_time_min, HEX);
+        mem_time_start_min.toUpperCase();
+        if (mem_time_start_min.length() != 2)
+          mem_time_start_min = '0' + mem_time_start_min;
+        String mem_starts_m = String(position_starts + 1, HEX);
+        mem_starts_m.toUpperCase();
+        cmd_write_data[13] = mem_starts_m.charAt(0);
+        cmd_write_data[14] = mem_starts_m.charAt(1);
+        cmd_write_data[15] = mem_starts_m.charAt(2);
+        cmd_write_data[17] = mem_time_start_min.charAt(0);
+        cmd_write_data[18] = mem_time_start_min.charAt(1);
+        calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+        softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+        position_starts += 2;
+      }
+
+      /*
       for (int index_starts = 1; index_starts < 20; index_starts++)
       {
         String mem_starts = String(position_starts + index_starts, HEX);
@@ -121,15 +164,17 @@ void loop()
           // Serial.print(cmd_write_data[i], HEX);
           Serial.write(cmd_write_data[i]);
           Serial.print(" ");
-        }
-        Serial.println(" ");
-        delay(800);
-      }
+        }*/
+      Serial.println(" ");
+      delay(800);
     }
   }
 
   while (softSerial.available())
+  {
+
     Serial.print((char)softSerial.read());
+  }
 }
 
 int calcrc(char ptr[], int length)
