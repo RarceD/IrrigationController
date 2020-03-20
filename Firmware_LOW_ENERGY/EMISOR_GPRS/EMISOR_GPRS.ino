@@ -227,7 +227,7 @@ void setup()
   connectMqtt();
   delay(50);
   millix = millis();
-    Serial.print(F("Battery: "));
+  Serial.print(F("Battery: "));
   Serial.println(batLevel());
   delay(10);
   // char json[15];
@@ -254,7 +254,7 @@ void loop()
   {
     Serial.println("Alive");
     char send[] = "NOT_DEAD";
-    mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)send, 9, false);
+    mqttClient.publish(String("debug_vyr").c_str(), (const uint8_t *)send, 9, false);
     millix = millis();
   }
 }
@@ -329,7 +329,7 @@ void connectMqtt()
   {
     if (mqttClient.connect(clientId.c_str(), user_mqtt, pass_mqtt))
     {
-      mqttClient.subscribe(String(sys.devUuid).c_str());
+      // mqttClient.subscribe(String(sys.devUuid).c_str());
       topic = String(sys.devUuid) + "/+/app";
       mqttClient.subscribe(topic.c_str());
     }
@@ -368,13 +368,13 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   if (sTopic.indexOf("manvalve") != -1)
   {
     Serial.println("Publish in /manvalve/app");
+    send_web("/manvalve", sizeof("/manvalve"), identifier.c_str());
     //I firts of all parse the message
     JsonArray &valves = parsed["valves"];
     //I obtein the values of the parser info:
     String valve_time;
     int valve_number[4], valve_action[4], valve_min[4], valve_hours[4];
     //Start the game:
-    send_web("/manvalve", sizeof("/manvalve"), identifier.c_str());
 
     for (uint8_t index_oasis = 0; index_oasis < valves.size(); index_oasis++)
     {
@@ -427,11 +427,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     // Serial.println(activate);
     String manual_program;
     manual_program = parsed["prog"].as<String>();
-    // I first send it to 
+    // I first send it to
     send_web("/manprog", sizeof("/manprog"), identifier.c_str()); // I send ack to the app
     delay(500);
     action_prog_pg(activate, manual_program.charAt(0)); //I send the command tom PG
-    
   }
   else if (sTopic.indexOf("oasis") != -1)
   {
