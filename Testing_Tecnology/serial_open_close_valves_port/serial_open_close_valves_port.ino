@@ -66,17 +66,23 @@ void loop()
     {
       // 13   14   15  the position in memmory
       // 17   18       what I write
-      uint16_t val = time_to_pg_format(0, 3);
-      String mem_time = String(val, HEX);
-      if (mem_time.length() != 2)
-        mem_time = '0' + mem_time;
-      mem_time.toUpperCase();
-      Serial.println(mem_time.charAt(1));
-      Serial.println(mem_time.charAt(0));
-      // I set starts:
-      for (int index_mem = 0; index_mem < 5; index_mem++)
+      uint8_t time_valves[14][2]; //This is a huge and ridiculous PG valve register
+      time_valves[0][0] = 0;      //Los horas de V1
+      time_valves[0][1] = 27;     //Los minutos
+      time_valves[1][0] = 1;      //Los horas de V2
+      time_valves[1][1] = 24;     //Los minutos
+      uint16_t mem_pos = 400;
+      for (int index_compleat = 0; index_compleat < 2; index_compleat++)
       {
-        String mem_starts = String(400 + index_mem);
+        uint16_t val = time_to_pg_format(time_valves[index_compleat][0], time_valves[index_compleat][1]);
+        String mem_time = String(val, HEX);
+        if (mem_time.length() != 2)
+          mem_time = '0' + mem_time;
+        mem_time.toUpperCase();
+        Serial.println(mem_time.charAt(1));
+        Serial.println(mem_time.charAt(0));
+
+        String mem_starts = String(mem_pos + index_compleat);
         mem_starts.toUpperCase();
         cmd_write_data[13] = mem_starts.charAt(0);
         cmd_write_data[14] = mem_starts.charAt(1);
@@ -87,11 +93,10 @@ void loop()
         softSerial.write(cmd_write_data, sizeof(cmd_write_data));
         for (i = 0; i < sizeof(cmd_write_data); i++)
         {
-          // Serial.print(cmd_write_data[i], HEX);
           Serial.write(cmd_write_data[i]);
           Serial.print(" ");
         }
-        delay(1000);
+        delay(800);
         Serial.println(" ");
       }
     }
@@ -101,15 +106,15 @@ void loop()
       uint16_t position_starts = 416;
       String mem_starts_h;
       uint8_t time_prog[6][2];
-      time_prog[0][0] = 1; //horas arranque 1 programa A
-      time_prog[0][1] = 2; //minutos
-      time_prog[1][0] = 3; //horas arranque 2 programa A
-      time_prog[1][1] = 4; //minutos
-      time_prog[2][0] = 5; //horas arranque 3 programa A
-      time_prog[2][1] = 6; //minutos
-      time_prog[3][0] = 7; //horas arranque 4 programa A
-      time_prog[3][1] = 8; //minutos
-      time_prog[4][0] = 9; //horas arranque 5 programa A
+      time_prog[0][0] = 1;  //horas arranque 1 programa A
+      time_prog[0][1] = 2;  //minutos
+      time_prog[1][0] = 3;  //horas arranque 2 programa A
+      time_prog[1][1] = 4;  //minutos
+      time_prog[2][0] = 5;  //horas arranque 3 programa A
+      time_prog[2][1] = 6;  //minutos
+      time_prog[3][0] = 7;  //horas arranque 4 programa A
+      time_prog[3][1] = 8;  //minutos
+      time_prog[4][0] = 9;  //horas arranque 5 programa A
       time_prog[4][1] = 10; //minutos
 
       for (int index_complet = 0; index_complet < 5; index_complet++)
@@ -120,7 +125,7 @@ void loop()
         mem_time_start_hours.toUpperCase();
         if (mem_time_start_hours.length() != 2)
           mem_time_start_hours = '0' + mem_time_start_hours;
-         mem_starts_h = String(position_starts + 0, HEX);
+        mem_starts_h = String(position_starts + 0, HEX);
         mem_starts_h.toUpperCase();
         cmd_write_data[13] = mem_starts_h.charAt(0);
         cmd_write_data[14] = mem_starts_h.charAt(1);
@@ -146,35 +151,12 @@ void loop()
         softSerial.write(cmd_write_data, sizeof(cmd_write_data));
         position_starts += 2;
       }
-
-      /*
-      for (int index_starts = 1; index_starts < 20; index_starts++)
-      {
-        String mem_starts = String(position_starts + index_starts, HEX);
-        mem_starts.toUpperCase();
-        cmd_write_data[13] = mem_starts.charAt(0);
-        cmd_write_data[14] = mem_starts.charAt(1);
-        cmd_write_data[15] = mem_starts.charAt(2);
-        cmd_write_data[17] = mem_time_start.charAt(0);
-        cmd_write_data[18] = mem_time_start.charAt(1);
-        calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-        softSerial.write(cmd_write_data, sizeof(cmd_write_data));
-        for (i = 0; i < sizeof(cmd_write_data); i++)
-        {
-          // Serial.print(cmd_write_data[i], HEX);
-          Serial.write(cmd_write_data[i]);
-          Serial.print(" ");
-        }*/
       Serial.println(" ");
-      delay(800);
     }
   }
 
   while (softSerial.available())
-  {
-
     Serial.print((char)softSerial.read());
-  }
 }
 
 int calcrc(char ptr[], int length)
