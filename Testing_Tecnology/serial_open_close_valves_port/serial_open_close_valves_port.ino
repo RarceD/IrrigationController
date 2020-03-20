@@ -35,7 +35,6 @@ void setup()
     Serial.print(" ");
   }
   Serial.println(" ");
-
   for (i = 0; i < sizeof(cmd_read_line); i++)
   {
     Serial.write(cmd_read_line[i]);
@@ -99,21 +98,29 @@ void loop()
         Serial.print(" ");
       }
     }
-       if (a == 102) { // press F change starts
+    if (a == 102)
+    { // press F change starts
       // 13   14   15  the position in memmory
       // 17   18       what I write
-      cmd_write_data[13] = '1';
-      cmd_write_data[14] = 'A';
-      cmd_write_data[15] = '1';
-      cmd_write_data[17] = '3';
-      cmd_write_data[18] = 'B';
+      uint8_t val = time_to_pg_format(5,30);
+      String a = String(val,HEX);
+      Serial.println(a.charAt(1));
+      Serial.println(a.charAt(0));
+
+      cmd_write_data[13] = '4';
+      cmd_write_data[14] = '0';
+      cmd_write_data[15] = '0';
+      cmd_write_data[17] = a.charAt(0);
+      cmd_write_data[18] = a.charAt(1);
       calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
       calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
 
       softSerial.write(cmd_write_data, sizeof(cmd_write_data));
       for (i = 0; i < sizeof(cmd_write_data); i++)
       {
-        Serial.print(cmd_write_data[i], HEX);
+        // Serial.print(cmd_write_data[i], HEX);
+        Serial.write(cmd_write_data[i]);
+
         Serial.print(" ");
       }
     }
