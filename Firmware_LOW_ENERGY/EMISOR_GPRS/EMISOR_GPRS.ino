@@ -167,12 +167,7 @@ void setup()
   oldPort = PCPIN;
   PCMSK |= (1 << PCINT);
   jam.ledBlink(LED_SETUP, 100);
-
   softSerial.begin(9600);
-  // uint8_t buf[] = {0x02, 0xfe, 'S', 'T', 'A', 'R', 'T', ' ', 'M', 'A', 'N', 'V', 'A', 'L', 'V', 0x23, '0', '1', 0x23, '0', '0', '0', '1', 0x23, 0x03, 0, 0};
-  // calcrc((char *)buf, sizeof(buf) - 2);
-  // softSerial.write(buf, sizeof(buf));
-
   flash.powerUp();
   flash.begin();
   /*
@@ -186,7 +181,6 @@ void setup()
   flash.eraseSector(SYS_VAR_ADDR);
   flash.writeAnything(SYS_VAR_ADDR, sys);
   */
-
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   manager.init();
@@ -227,13 +221,6 @@ void setup()
   connectMqtt();
   delay(50);
   millix = millis();
-
-  // char json[15];
-  // DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
-  // JsonObject &root = jsonBuffer.createObject();
-  // root.set("alive", "true");
-  // root.printTo(json);
-  // mqttClient.publish(String(sys.devUuid).c_str(), (const uint8_t *)json, strlen(json), false);
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -247,7 +234,6 @@ void loop()
     delay(5);
   }
   // listening_pg();
-
   if (millis() - millix >= 20000) // Printing that I am not dead
   {
     uint16_t b, c;
@@ -265,7 +251,6 @@ void loop()
     }
     float bat = b * 0.0190 - 2.0;
     char json[100];
-
     DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
     JsonObject &root = jsonBuffer.createObject();
     root.set("id", sys.devUuid);
@@ -273,7 +258,6 @@ void loop()
     root.set("success", "true");
     root.printTo(json);
     mqttClient.publish(String("debug_vyr").c_str(), (const uint8_t *)json, strlen(json), false);
-
     millix = millis();
   }
 }
@@ -361,17 +345,12 @@ void connectMqtt()
   Serial.println("Successfully connected to MQTT");
   //I suscribe to all the topics
 }
-/*
-this callback function is called everytime a subscription topic message is received
-*/
 void mqttCallback(char *topic, byte *payload, unsigned int length)
 {
   char json[MAX_JSON_SIZE];
   String sTopic, jsParsed;
   uint8_t i, id, len, val, h, mn, prevChildValves[4];
   DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
-  // root.set("id", parsed["id"]);
-
   if (!length)
     return;
   jsParsed = jam.byteArrayToString(payload, length);
@@ -380,9 +359,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   DPRINTLN(jsParsed.c_str());
   delay(10);
   String identifier = parsed["id"].as<String>(); // This is for the sendding function app
-
   sTopic = String(topic);
-
   // Then I identify the topic related with
   if (sTopic.indexOf("manvalve") != -1)
   {
@@ -546,7 +523,6 @@ void send_web(char *topic, unsigned int length, const char *id)
 
   mqttClient.publish((String(sys.devUuid) + ack_topic).c_str(), (const uint8_t *)json, strlen(json), false);
 }
-
 void send_nodo_rf(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
 {
   //First write the destination of the message:
@@ -1121,7 +1097,6 @@ void pgCommand(uint8_t command[], uint8_t len)
   }
   pgData[i - 1] = '\0';
 }
-
 int calcrc(char ptr[], int length)
 {
   char i;
@@ -1213,5 +1188,29 @@ void action_prog_pg(uint8_t state, char program)
     cmd_stop_manprg[14] = program;
     calcrc((char *)cmd_stop_manprg, sizeof(cmd_stop_manprg) - 2);
     softSerial.write(cmd_stop_manprg, sizeof(cmd_stop_manprg));
+  }
+}
+uint8_t time_to_pg_format(uint8_t hours, uint8_t minutes)
+{
+  if (hours == 0) //Less than an hour I just have to convert to hex:
+    return minutes;
+  else
+  {
+    //I obtein the units of the number and then decimal
+    uint8_t min_units = minutes - (minutes / 10) * 10;
+    if (min_units >= 5)
+      min_units = 5;
+    else
+      min_units = 0;
+    minutes = (minutes / 10) * 10 + min_units;
+    hours--;
+    //Now I have the time in a correct format and I can convert it
+    uint8_t times_minutes = 0;
+    while (minutes > 0)
+    {
+      minutes -= 5;
+      times_minutes++;
+    }
+    return (60 + 12 * hours + times_minutes);
   }
 }
