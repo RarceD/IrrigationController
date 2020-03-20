@@ -25,7 +25,6 @@ void setup()
 
   Serial.begin(115200);
   softSerial.begin(9600);
-  Serial.print(time_to_pg_format(2, 5), HEX);
   calcrc((char *)cmd_read_line, sizeof(cmd_read_line) - 2);
   softSerial.write(cmd_read_line, sizeof(cmd_read_line));
   Serial.print("Command send: ");
@@ -63,73 +62,74 @@ void loop()
       Serial.println("YA");
       action_prog_pg(false, 'C');
     }
-    if (a == 100) //Press the D for change PG memmory starts
+    if (a == 100) //Press the D for change PG memmory irrigation valves
     {
       // 13   14   15  the position in memmory
       // 17   18       what I write
-      cmd_write_data[13] = '4';
-      cmd_write_data[14] = '0';
-      cmd_write_data[15] = '0';
-
-      cmd_write_data[17] = '4';
-      cmd_write_data[18] = '9';
-      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-      softSerial.write(cmd_write_data, sizeof(cmd_write_data));
-      for (i = 0; i < sizeof(cmd_write_data); i++)
+      uint16_t val = time_to_pg_format(0, 3);
+      String mem_time = String(val, HEX);
+      if (mem_time.length() != 2)
+        mem_time = '0' + mem_time;
+      mem_time.toUpperCase();
+      Serial.println(mem_time.charAt(1));
+      Serial.println(mem_time.charAt(0));
+      // I set starts:
+      for (int index_mem = 0; index_mem < 5; index_mem++)
       {
-        Serial.print(cmd_write_data[i], HEX);
-        Serial.print(" ");
+        String mem_starts = String(400 + index_mem);
+        mem_starts.toUpperCase();
+        cmd_write_data[13] = mem_starts.charAt(0);
+        cmd_write_data[14] = mem_starts.charAt(1);
+        cmd_write_data[15] = mem_starts.charAt(2);
+        cmd_write_data[17] = mem_time.charAt(0);
+        cmd_write_data[18] = mem_time.charAt(1);
+        calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+        softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+        for (i = 0; i < sizeof(cmd_write_data); i++)
+        {
+          // Serial.print(cmd_write_data[i], HEX);
+          Serial.write(cmd_write_data[i]);
+          Serial.print(" ");
+        }
+        delay(1000);
+        Serial.println(" ");
       }
     }
-    if (a == 101) //Press the E for change PG memmory starts
+    if (a == 101) // Press E to change the PG starts
     {
-      // 13   14   15  the position in memmory
-      // 17   18       what I write
-      cmd_write_data[13] = '4';
-      cmd_write_data[14] = '0';
-      cmd_write_data[15] = '0';
-      cmd_write_data[17] = '4';
-      cmd_write_data[18] = '0';
-      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-      softSerial.write(cmd_write_data, sizeof(cmd_write_data));
-      for (i = 0; i < sizeof(cmd_write_data); i++)
+      uint16_t start_time = time_to_pg_format(0, 2);
+      String mem_time_start = String(start_time, HEX);
+      mem_time_start.toUpperCase();
+      if (mem_time_start.length() != 2)
+        mem_time_start = '0' + mem_time_start;
+      Serial.println(mem_time_start.charAt(1));
+      Serial.println(mem_time_start.charAt(0));
+      uint16_t position_starts = 416;
+      for (int index_starts = 1; index_starts < 20; index_starts++)
       {
-        Serial.print(cmd_write_data[i], HEX);
-        Serial.print(" ");
-      }
-    }
-    if (a == 102)
-    { // press F change starts
-      // 13   14   15  the position in memmory
-      // 17   18       what I write
-      uint8_t val = time_to_pg_format(5,30);
-      String a = String(val,HEX);
-      Serial.println(a.charAt(1));
-      Serial.println(a.charAt(0));
-
-      cmd_write_data[13] = '4';
-      cmd_write_data[14] = '0';
-      cmd_write_data[15] = '0';
-      cmd_write_data[17] = a.charAt(0);
-      cmd_write_data[18] = a.charAt(1);
-      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-
-      softSerial.write(cmd_write_data, sizeof(cmd_write_data));
-      for (i = 0; i < sizeof(cmd_write_data); i++)
-      {
-        // Serial.print(cmd_write_data[i], HEX);
-        Serial.write(cmd_write_data[i]);
-
-        Serial.print(" ");
+        String mem_starts = String(position_starts + index_starts, HEX);
+        mem_starts.toUpperCase();
+        cmd_write_data[13] = mem_starts.charAt(0);
+        cmd_write_data[14] = mem_starts.charAt(1);
+        cmd_write_data[15] = mem_starts.charAt(2);
+        cmd_write_data[17] = mem_time_start.charAt(0);
+        cmd_write_data[18] = mem_time_start.charAt(1);
+        calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+        softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+        for (i = 0; i < sizeof(cmd_write_data); i++)
+        {
+          // Serial.print(cmd_write_data[i], HEX);
+          Serial.write(cmd_write_data[i]);
+          Serial.print(" ");
+        }
+        Serial.println(" ");
+        delay(800);
       }
     }
   }
 
   while (softSerial.available())
-  {
     Serial.print((char)softSerial.read());
-  }
 }
 
 int calcrc(char ptr[], int length)
@@ -249,6 +249,3 @@ uint8_t time_to_pg_format(uint8_t hours, uint8_t minutes)
     return (60 + 12 * hours + times_minutes);
   }
 }
-// void write_PG_starts(char program, uint8_t start_hours, uint8_t start_min)
-// {
-// }
