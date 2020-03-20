@@ -227,9 +227,7 @@ void setup()
   connectMqtt();
   delay(50);
   millix = millis();
-  Serial.print(F("Battery: "));
-  Serial.println(batLevel());
-  delay(10);
+
   // char json[15];
   // DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
   // JsonObject &root = jsonBuffer.createObject();
@@ -252,15 +250,36 @@ void loop()
 
   if (millis() - millix >= 20000) // Printing that I am not dead
   {
-    Serial.println("Alive");
-    char send[] = "NOT_DEAD";
-    mqttClient.publish(String("debug_vyr").c_str(), (const uint8_t *)send, 9, false);
+    uint16_t b, c;
+    analogReference(INTERNAL);
+    for (int i = 0; i < 3; i++)
+    {
+      b = analogRead(PA0);
+      delay(1);
+    }
+    analogReference(DEFAULT);
+    for (int i = 0; i < 3; i++)
+    {
+      c = analogRead(PA0);
+      delay(1);
+    }
+    float bat = b * 0.0190 - 2.0;
+    char json[100];
+
+    DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
+    JsonObject &root = jsonBuffer.createObject();
+    root.set("id", sys.devUuid);
+    root.set("battery", bat);
+    root.set("success", "true");
+    root.printTo(json);
+    mqttClient.publish(String("debug_vyr").c_str(), (const uint8_t *)json, strlen(json), false);
+
     millix = millis();
   }
 }
 
 /*******************************************************************   functions     ************************************************************************************/
-
+  
 void connectSIM()
 {
   delay(500);
