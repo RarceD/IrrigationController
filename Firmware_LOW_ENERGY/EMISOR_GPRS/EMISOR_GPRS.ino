@@ -466,6 +466,34 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     String manual_program = parsed["prog"].as<String>();
     //I parse the array of starts and valves, if there's any
     JsonArray &starts = parsed["starts"];
+    //I determin the positions of the PG in which I have to write
+    uint16_t position_starts = 416; // This is the position of the starts in PG EEPROM memmory
+    uint16_t mem_pos = 1024;         // This is the position of the starts in PG EEPROM memmory
+    if (manual_program.charAt(0) == 'B')
+    {
+      position_starts = 428;
+      mem_pos = 1152;
+    }
+    else if (manual_program.charAt(0) == 'C')
+    {
+      position_starts = 440;
+      mem_pos = 1280;
+    }
+    else if (manual_program.charAt(0) == 'D')
+    {
+      position_starts = 452;
+      mem_pos = 1408;
+    }
+    else if (manual_program.charAt(0) == 'E')
+    {
+      position_starts = 464;
+      mem_pos = 1536;
+    }
+    else if (manual_program.charAt(0) == 'F')
+    {
+      position_starts = 476;
+      mem_pos = 1664;
+    }
     if (starts.success())
     {
       LOG("Exists Starts");
@@ -484,11 +512,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         LOGLN(time_prog[index_starts][1]);
       }
       uint16_t start_time_hours = 0, start_time_min = 0;
-      //TODO: change also the program, just have to modified the position_starts
-      uint16_t position_starts = 416;
       String mem_starts_h;
       for (int index_complet = 0; index_complet < starts.size(); index_complet++)
       {
+        //First format the info y PG language
         start_time_hours = time_to_pg_format(0, time_prog[index_complet][0]);
         String mem_time_start_hours = String(start_time_hours, HEX);
         mem_time_start_hours.toUpperCase();
@@ -496,6 +523,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           mem_time_start_hours = '0' + mem_time_start_hours;
         mem_starts_h = String(position_starts + 0, HEX);
         mem_starts_h.toUpperCase();
+        //Not that is compleatly in HEX I copy in the data buffer
         cmd_write_data[13] = mem_starts_h.charAt(0);
         cmd_write_data[14] = mem_starts_h.charAt(1);
         cmd_write_data[15] = mem_starts_h.charAt(2);
@@ -543,7 +571,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         LOGLN(time_valves[number_valves][1]);
       }
       //TODO: obtein the number of the valves and write the EEPROM memmory in correct positions
-      uint16_t mem_pos = 400;
       for (int index_compleat = 0; index_compleat < valves.size(); index_compleat++)
       {
         uint16_t val = time_to_pg_format(time_valves[index_compleat][0], time_valves[index_compleat][1]);
@@ -551,9 +578,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         if (mem_time.length() != 2)
           mem_time = '0' + mem_time;
         mem_time.toUpperCase();
-        Serial.println(mem_time.charAt(1));
-        Serial.println(mem_time.charAt(0));
-        String mem_starts = String(mem_pos + index_compleat);
+        // Serial.println(mem_time.charAt(1));
+        // Serial.println(mem_time.charAt(0));
+        number_valves = valves[index_compleat]["v"].as<uint8_t>() - 1;
+        String mem_starts = String(mem_pos + number_valves,HEX);
         mem_starts.toUpperCase();
         cmd_write_data[13] = mem_starts.charAt(0);
         cmd_write_data[14] = mem_starts.charAt(1);
@@ -565,9 +593,9 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         for (i = 0; i < sizeof(cmd_write_data); i++)
         {
           Serial.write(cmd_write_data[i]);
-          Serial.print(" ");
+          // Serial.print(" ");
         }
-        delay(800);
+        delay(1000);
         Serial.println(" ");
       }
     }
