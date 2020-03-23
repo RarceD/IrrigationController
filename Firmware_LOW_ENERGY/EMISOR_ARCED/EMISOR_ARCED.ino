@@ -34,7 +34,7 @@
 #define SERVER_ADDRESS 1
 
 #define MAX_NODE_NUMBER 7
-#define MAX_MANUAL_TIMERS 10
+#define MAX_MANUAL_TIMERS 20
 #define MAX_NUM_MESSAGES 15
 #define UUID_LENGTH 16
 #define TIME_RESPOSE 50000
@@ -82,7 +82,7 @@ typedef struct
   uint8_t assigned_info[5][MAX_NUM_MESSAGES]; //This info is for assigned [num oasis, assig0, assig1, assig2, assig3]
 } radio_actions;
 typedef enum
-{                                       // This enum contains the possible actions
+{ // This enum contains the possible actions
   REQUEST_MANVAL,
   REQUEST_MANUAL,
   REQUEST_TIME,
@@ -1286,7 +1286,7 @@ void listening_pg()
     }
     else if (pg.indexOf("STOP ALL") > 0)
     {
-      Serial.println("Paro TODO");
+      Serial.println("Paro TODO"); // I clear all the variables of the programs
       start_programA = false;
       start_programA_ones = false;
       start_programB = false;
@@ -1296,6 +1296,16 @@ void listening_pg()
       start_programD = false;
       start_programD_ones = false;
       radio_waitting_msg.request_STOP_ALL[radio_waitting_msg.num_message_flags++] = true;
+
+      man.timer_active = false; //I clear all the manual stops
+      man.index = 0;
+      for (uint8_t index_man = 0; index_man < MAX_MANUAL_TIMERS; index_man++)
+      {
+        man.millix[index_man] = 0;
+        man.time_to_stop[index_man] = 0;
+        man.valve[index_man] = 0;
+      }
+
       //send_nodo(1, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
     }
     else if (pg.indexOf("SET TIME#") > 0)

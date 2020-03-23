@@ -198,7 +198,6 @@ void setup()
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   //rtc.setAlarm(0, 30, 0, 0, 0);
   // rtc.setToCompilerTime();
-
   rtc.updateTime();
   Serial.println(rtc.stringTime());
   Serial.println(rtc.stringDate());
@@ -215,7 +214,6 @@ void setup()
     radio_waitting_msg.request_STOP_ALL[msg] = false;
     radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
   }
-
   print_flash();
   connectSIM();
   connectMqtt();
@@ -261,9 +259,7 @@ void loop()
     millix = millis();
   }
 }
-
 /*******************************************************************   functions     ************************************************************************************/
-
 void connectSIM()
 {
   delay(500);
@@ -463,6 +459,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   else if (sTopic.indexOf("program") != -1)
   {
     //I parse the letter of the program
+    send_web("/program", sizeof("/program"), identifier.c_str());
     String manual_program = parsed["prog"].as<String>();
     //I parse the array of starts and valves, if there's any
     JsonArray &starts = parsed["starts"];
@@ -553,7 +550,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     JsonArray &valves = parsed["valves"];
     if (valves.success())
     {
-      LOG("Exists Valves");
+      // LOG("Exists Valves");
       uint8_t time_valves[128][2]; //This is a huge and ridiculous
       String irrig_time;           //The string for the 00:00 time format
       uint8_t number_valves;
@@ -575,10 +572,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       {
         uint16_t val = time_to_pg_format(time_valves[index_compleat][0], time_valves[index_compleat][1]);
         String mem_time = String(val, HEX);
-        if (mem_time.length() != 2)
+        if (mem_time.length() == 1)
           mem_time = '0' + mem_time;
         mem_time.toUpperCase();
-        // Serial.println(mem_time.charAt(1));
+        Serial.println(mem_time);
         // Serial.println(mem_time.charAt(0));
         number_valves = valves[index_compleat]["v"].as<uint8_t>() - 1;
         String mem_starts = String(mem_pos + number_valves,HEX);
@@ -600,7 +597,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       }
     }
     LOGLN(manual_program);
-    send_web("/program", sizeof("/program"), identifier.c_str());
   }
 }
 void send_web(char *topic, unsigned int length, const char *id)

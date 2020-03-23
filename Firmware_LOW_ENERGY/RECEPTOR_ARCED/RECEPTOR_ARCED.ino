@@ -122,19 +122,20 @@ void setup()
   flash.powerUp();
   flash.begin();
   // I have to change the flash info for each devise:
-  
-  sys.id = 3;
+  /*
+  sys.id = 1;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '1';
-  sys.assigned_output[0] = 3;
-  sys.assigned_output[1] = 4;
-  sys.assigned_output[2] = 9;
-  sys.assigned_output[3] = 9;
-  char ack[] = "##OK03##";
+  sys.assigned_output[0] = 1;
+  sys.assigned_output[1] = 2;
+  sys.assigned_output[2] = 3;
+  sys.assigned_output[3] = 4;
+  char ack[] = "##OK01##";
   for (int i = 0; i < sizeof(ack); i++)
     sys.ack_msg[i] = ack[i];
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys);
+  */
   
   flash.readAnything(FLASH_SYS_DIR, sys);
   manager.init();
@@ -177,11 +178,11 @@ void loop()
     if (manager.available()) // Detect radio activity and set a timer for waking up at 00
     {
       //start = millis();
-      Serial.println("FIRST TRY");
+      DPRINTLN("FIRST TRY");
       uint8_t len = sizeof(buf);
       manager.recvfromAck(buf, &len);
       listen_master(); //When activity is detected listen the master
-      Serial.println("ESPERA");
+      DPRINTLN("ESPERA");
       delay(500);
     }
     jam.ledBlink(LED_SETUP, 500);
