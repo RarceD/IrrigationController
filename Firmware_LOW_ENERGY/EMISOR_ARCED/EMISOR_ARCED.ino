@@ -231,19 +231,18 @@ void loop()
     bool all_nodes_ack = false;
     number_msg_compleatly_sent = radio_waitting_msg.num_message_flags;
     pg_interact_while_radio = false;
-
-    while (counter_syn <= 15) // I try to send the message for 25 times, if I fail print kill me.
+    while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
     {
-      if (millis() - start >= 500) //500 ms is a nice number
+      if (millis() - start >= 400) // Every 500ms I send a message to the oasis hoping they will receive them
       {
         prepare_message(); // This function spends 400ms to compleat
         counter_syn++;
+        manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS); //Send to the receivers
+        start = millis();
       }
-      listening_pg();                                         // Listen all the topics
-      manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS); //Send to the receivers
+      listening_pg();
     }
-
-    if (!pg_interact_while_radio)
+    if (!pg_interact_while_radio) // If the user touch the fucking PG I do not clear the send flags and I send twice
     {
       pg_interact_while_radio = false;
       for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
@@ -1213,8 +1212,10 @@ void listening_pg()
   }
   if (i > 10)
     intPg = true;
+
   if (intPg)
-  {                      //if int pg was triggered
+  {
+    //if int pg was triggered
     intPg = false;       //clear int pg flag
     pgData[i] = '\0';    //add end of char
     pg = String(pgData); //convert message received into string
@@ -1259,26 +1260,31 @@ void listening_pg()
     {
       uint8_t prog_name = (pgData[pg.indexOf("MANPRG START#") + 13] - 65);
       Serial.print("Programa:");
-      Serial.println(prog_name);
       switch (prog_name)
       {
       case 0:
         start_programA = true;
+        Serial.println("A");
         break;
       case 1:
         start_programB = true;
+        Serial.println("B");
         break;
       case 2:
         start_programC = true;
+        Serial.println("C");
         break;
       case 3:
         start_programD = true;
+        Serial.println("D");
         break;
       case 4:
         start_programE = true;
+        Serial.println("E");
         break;
       case 5:
         start_programF = true;
+        Serial.println("F");
         break;
       default:
         break;
