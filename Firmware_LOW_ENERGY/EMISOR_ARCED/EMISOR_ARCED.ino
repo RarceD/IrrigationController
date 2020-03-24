@@ -134,6 +134,7 @@ bool oasis_actions;
 bool pg_interact_while_radio;
 uint8_t counter_syn;
 uint8_t number_msg_compleatly_sent;
+uint8_t rf_msg_tries;
 /******************************************************************* setup section ************************************************************************************/
 void setup()
 {
@@ -231,6 +232,7 @@ void loop()
     bool all_nodes_ack = false;
     number_msg_compleatly_sent = radio_waitting_msg.num_message_flags;
     pg_interact_while_radio = false;
+    rf_msg_tries++;           // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
     while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
     {
       if (millis() - start >= 400) // Every 500ms I send a message to the oasis hoping they will receive them
@@ -242,8 +244,10 @@ void loop()
       }
       listening_pg();
     }
+    /*
     if (!pg_interact_while_radio) // If the user touch the fucking PG I do not clear the send flags and I send twice
     {
+      jam.ledBlink(LED_SETUP, 1000); //A led ON to realize that I it es continously sendding and cleanning
       pg_interact_while_radio = false;
       for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
       {
@@ -256,6 +260,7 @@ void loop()
       radio_waitting_msg.num_message_flags = 0;
       Serial.println("CLEAR MEMMORY FLAGS");
     }
+    */
     counter_syn = 0;
     oasis_actions = false;
   }
@@ -512,13 +517,18 @@ void loop()
       // The first element is the time of the valve and the second element is
       if (man.millix[index_manual] != 0 && millis() - man.millix[index_manual] >= man.time_to_stop[index_manual])
       {
-        Serial.print("APAGO LA VALVULA: ");
+        Serial.print("APAGO LA VALVULA MANUAL: ");
         Serial.println(man.valve[index_manual]);
         //I set a flag, when the time of waking up starts all the messages
         radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
         radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = man.valve[index_manual];
         radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
         radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
+        //I clear all the info of this timer:
+        man.valve[index_manual] = 0;
+        man.millix[index_manual] = 0;
+        man.time_to_stop[index_manual] = 0;
+        //subtract an index and if the timers are 0 I set the flag to false and it does not check more
         man.index--;
         if (man.index < 1)
           man.timer_active = false;
@@ -533,14 +543,14 @@ void loop()
   timerF.run();
   timerCheck.run();
 }
-
 void prepare_message() // This function prepare the messages for been sent
 {
   for (int i = 0; i < sizeof(data) / 2; i++)
     data[i] = 'z';
   uint16_t index = 0; // This index is just for moving into the array
   data[index++] = '_';
-  send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+  if (rf_msg_tries < 2) // Only send time one time
+    send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
   for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++) //Introduce the messages in the data buffer
     if (radio_waitting_msg.request_MANUAL[msg])
       send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
@@ -907,15 +917,15 @@ void listen_nodo() // if the oasis send something i listen
       Serial.println("Everything is bad");
       break;
     }
-    // for (uint8_t i = 0; i < 40; i++) //loop from the buffer looking for the end of message
-    //   Serial.write(buf[i]);
   }
-  // The second following comparison is due to if, while the emiter is sendding, the user touch the programmer I do not allow to increase the number of msg to send,
-  // and I also do not clear the buffer
-  if (ack.id_node[0] && ack.id_node[1] && radio_waitting_msg.num_message_flags == number_msg_compleatly_sent)
+  if (ack.id_node[0] && ack.id_node[1] || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
+
     ack.id_node[0] = false;
     ack.id_node[1] = false;
+    rf_msg_tries = 0;
+    jam.ledBlink(LED_SETUP, 1000); //A led ON to realize that I it es continously sendding and cleanning
+    pg_interact_while_radio = false;
     for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
     {
       radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
@@ -924,9 +934,9 @@ void listen_nodo() // if the oasis send something i listen
       radio_waitting_msg.request_STOP_ALL[x] = false;
       radio_waitting_msg.request_FULL_MESSAGE[x] = false;
     }
-    // radio_waitting_msg.num_message_flags = 0;
+    radio_waitting_msg.num_message_flags = 0;
+    Serial.println("CLEAR MEMMORY FLAGS");
     // oasis_actions = false;
-    Serial.println("CLEAR BUFFER");
   }
 }
 void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory in a given range of address - It is not changed
