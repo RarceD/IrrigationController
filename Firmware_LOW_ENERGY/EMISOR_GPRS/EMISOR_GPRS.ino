@@ -177,7 +177,7 @@ void setup()
 
   char ack[] = "##OK55##";
   for (int i = 0; i < sizeof(ack); i++)
-    sys.ack_msg[i] = ack[i];
+    // sys.ack_msg[i] = ack[i];
   flash.eraseSector(SYS_VAR_ADDR);
   flash.writeAnything(SYS_VAR_ADDR, sys);
   */
@@ -231,7 +231,7 @@ void loop()
     connectMqtt();
     delay(5);
   }
-  // listening_pg();
+  // Every 20 seconds I publish that I am ALIVE
   if (millis() - millix >= 20000) // Printing that I am not dead
   {
     uint16_t b, c;
