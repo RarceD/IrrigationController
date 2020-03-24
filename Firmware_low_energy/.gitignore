@@ -1,9 +1,6 @@
-.6011_functionality.pdf
-.help.txt
-.método programacion.xlsx
-.PG 6011- Modificaciones Julio Agosto 2019 (1).docx
-.propio.ino
-.protocolo_pg_6011.xlsx
-.Protocolo_VRSA6010_rev1_0_4.pdf
+*.pdf
+*.txt
+*.xlsx
+*.docx
 Emisor/
 Receptor/
