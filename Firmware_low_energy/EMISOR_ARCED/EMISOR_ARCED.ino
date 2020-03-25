@@ -228,12 +228,14 @@ void loop()
   {
     // Always the first message have to be sync
     start = millis();
-    bool all_nodes_ack = false;
+    //I clear the flags of interaction and program auto running
+    auto_program_flag = false;
     pg_interact_while_radio = false;
-    rf_msg_tries++;           // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
+    // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
+    rf_msg_tries++;
     while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
     {
-      if (millis() - start >= 400) // Every 500ms I send a message to the oasis hoping they will receive them
+      if (millis() - start >= 400) // Every 400ms I send a message to the oasis hoping they will receive them
       {
         prepare_message(); // This function spends 400ms to compleat
         counter_syn++;
@@ -739,7 +741,7 @@ void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char ho
   case REQUEST_MANUAL:
   {
     f_manual = true;
-    Serial.println("MANUAL OPEN");
+    // Serial.println("MANUAL OPEN");
     uint8_t str_manual[] = "##MANVAL#000#00:00#00";
     if (valve > 99)
     {
@@ -769,7 +771,7 @@ void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char ho
   case REQUEST_MANVAL:
   {
     f_man_valve = true;
-    Serial.println("REQUEST MANVALVE");
+    // Serial.println("REQUEST MANVALVE");
     uint8_t str_manval[] = "##MANVAL#000#00:00#00X";
     if (valve > 99)
     {
@@ -803,7 +805,7 @@ void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char ho
   {
 
     f_time = true;
-    Serial.println("REQUEST TIME");
+    // Serial.println("REQUEST TIME");
     rtc.updateTime();
     rtc_node((int)rtc.getHours(), (int)rtc.getMinutes(), (int)rtc.getSeconds(), (int)rtc.getDate(), (int)rtc.getMonth(), order);
     f_time = false;
@@ -811,7 +813,7 @@ void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char ho
   }
   case REQUEST_ASSIGNED_VALVES:
   {
-    Serial.println("CHANGE ASIGNATION VALVE");
+    // Serial.println("CHANGE ASIGNATION VALVE");
     f_asigned = true;
     //VALVE es el ID que va del 1 al 250
     uint8_t str_assigned[] = "##ASIGNED#000#000:000:000:000#00X";
@@ -858,7 +860,7 @@ void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char ho
   }
   case REQUEST_STOP_ALL:
   {
-    Serial.println("STOP ALL");
+    // Serial.println("STOP ALL");
     f_stop = true;
     f_stop = false;
     uint8_t str_stop[] = "##STOP#ALL#00X";
@@ -926,14 +928,17 @@ void listen_nodo() // if the oasis send something i listen
       break;
     }
   }
-  if ((ack.id_node[0] && ack.id_node[1] || rf_msg_tries > 3) && !auto_program_flag) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  bool clear_buffer = false;
+  if ((ack.id_node[0] && ack.id_node[1] && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
-auto_program_flag = false;
     ack.id_node[0] = false;
     ack.id_node[1] = false;
-    rf_msg_tries = 0;
-    jam.ledBlink(LED_SETUP, 1000); //A led ON to realize that I it es continously sendding and cleanning
+
+    auto_program_flag = false;
     pg_interact_while_radio = false;
+    rf_msg_tries = 0;
+
+    jam.ledBlink(LED_SETUP, 1000);                 //A led ON to realize that I it es continously sendding and cleanning
     for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
     {
       radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
@@ -944,7 +949,6 @@ auto_program_flag = false;
     }
     radio_waitting_msg.num_message_flags = 0;
     Serial.println("CLEAR MEMMORY FLAGS");
-    // oasis_actions = false;
   }
 }
 void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory in a given range of address - It is not changed
@@ -1319,6 +1323,13 @@ void listening_pg()
       start_programC_ones = false;
       start_programD = false;
       start_programD_ones = false;
+      timerE.deleteTimer(timer_A);
+      timerE.deleteTimer(timer_B);
+      timerE.deleteTimer(timer_C);
+      timerE.deleteTimer(timer_D);
+      timerE.deleteTimer(timer_E);
+      timerE.deleteTimer(timer_F);
+
       radio_waitting_msg.request_STOP_ALL[radio_waitting_msg.num_message_flags++] = true;
 
       man.timer_active = false; //I clear all the manual stops
