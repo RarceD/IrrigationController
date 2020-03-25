@@ -1,54 +1,33 @@
-// ArduinoJson - arduinojson.org
-// Copyright Benoit Blanchon 2014-2018
-// MIT License
-//
-// This example shows how to generate a JSON document with ArduinoJson.
-
 #include <ArduinoJson.h>
 
 void setup()
 {
-  Serial.begin(9600);
-  while (!Serial)
-    continue;
-  // Memory pool for JSON object tree.
-  //
-  // Inside the brackets, 200 is the size of the pool in bytes.
-  // Don't forget to change this value to match your JSON document.
-  // Use arduinojson.org/assistant to compute the capacity.
-  StaticJsonBuffer<200> jsonBuffer;
-
-  // StaticJsonBuffer allocates memory on the stack, it can be
-  // replaced by DynamicJsonBuffer which allocates in the heap.
-  //
-  // DynamicJsonBuffer  jsonBuffer(200);
-
-  // Create the root of the object tree.
-  //
-  // It's a reference to the JsonObject, the actual bytes are inside the
-  // JsonBuffer with all the other nodes of the object tree.
-  // Memory is freed when jsonBuffer goes out of scope.
+  Serial.begin(115200);
+  DynamicJsonBuffer jsonBuffer(200);
   JsonObject &root = jsonBuffer.createObject();
 
-  // Add values in the object
-  //
-  // Most of the time, you can rely on the implicit casts.
-  // In other case, you can do root.set<long>("time", 1351824120);
-  root["sensor"] = "gps";
-  root["time"] = 1351824120;
+  root["prog"] = 'A';
+  JsonArray &starts = root.createNestedArray("starts");
+  starts.add("12:45");
+  starts.add("13:05");
+  starts.add("02:35");
+  starts.add("01:15");
+  root["water"] = 100;
+  JsonArray &valves = root.createNestedArray("valves");
+ JsonArray &irrig = root.createNestedArray("irrig");
 
-  // Add a nested array.
-  //
-  // It's also possible to create the array separately and add it to the
-  // JsonObject but it's less efficient.
-  JsonArray &data = root.createNestedArray("data");
-  data.add(48.756080);
-  data.add(2.302038);
+  valves.add(irrig);
+  irrig.add(12);
+  irrig.add(12);
 
-  root.printTo(Serial);
-  // This prints:
-  // {"sensor":"gps","time":1351824120,"data":[48.756080,2.302038]}
+  //irrig["hola"] = 12;
+  //irrig["adios"] = 12;
 
+  //valves.add("time");
+  // valves.add("time : 12:12");
+  //JsonArray &irrig = root.createNestedArray("irrig");
+  //irrig.add("12:45");
+  //irrig.add("13:05");
   Serial.println();
 
   root.prettyPrintTo(Serial);
@@ -65,7 +44,32 @@ void setup()
 
 void loop()
 {
-  // not used in this example
+  if (Serial.available())
+  {
+    int a = Serial.read();
+    /*
+    if (a == 97)
+    { //If I pressed A
+      //First the program A
+      //uint8_t start[6][2];
+      //uint16_t irrigTime[128];
+      for (int n = 0; n < 6; n++)
+      {
+        Serial.print(prog[0].start[n][0]);
+        Serial.print(":");
+        Serial.print(prog[0].start[n][1]);
+        Serial.print("__");
+      }
+      Serial.println("");
+      for (int n = 0; n < 50; n++)
+      {
+        Serial.print(prog[0].irrigTime[n]);
+        Serial.print(":");
+      }
+      Serial.println("");
+    }
+    */
+  }
 }
 
 // See also
