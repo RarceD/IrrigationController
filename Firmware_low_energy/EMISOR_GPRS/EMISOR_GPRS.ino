@@ -367,11 +367,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         LOG(valve_hours[index_oasis]);
         LOG(":");
         LOGLN(valve_min[index_oasis]);
-
-        // radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
-        // radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number[index_oasis];
-        // radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = valve_hours[index_oasis];
-        // radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = valve_min[index_oasis];
       }
       else if (valve_action[index_oasis] == 0)
       {
@@ -388,10 +383,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         delay(1500);
       }
     }
-
     //I send via radio to the receiver
-    //prepare_message();
-    //manager.sendtoWait(data, 50, CLIENT_ADDRESS);
   }
   else if (sTopic.indexOf("manprog") != -1)
   {
@@ -428,15 +420,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       LOGLN("");
     }
     send_web("/oasis", sizeof("/oasis"), identifier.c_str());
-    // radio_waitting_msg.request_ASSIGNED_VALVES[radio_waitting_msg.num_message_flags] = true;
-    // radio_waitting_msg.assigned_info[0][radio_waitting_msg.num_message_flags] = ide - 1;
-    // radio_waitting_msg.assigned_info[1][radio_waitting_msg.num_message_flags] = assigned_id[0] - 1;
-    // radio_waitting_msg.assigned_info[2][radio_waitting_msg.num_message_flags] = assigned_id[1] - 1;
-    // radio_waitting_msg.assigned_info[3][radio_waitting_msg.num_message_flags] = assigned_id[2] - 1;
-    // radio_waitting_msg.assigned_info[4][radio_waitting_msg.num_message_flags] = assigned_id[3] - 1;
-    //I send via radio to the receiver
-    // prepare_message();
-    // manager.sendtoWait(data, 50, CLIENT_ADDRESS);
   }
   else if (sTopic.indexOf("program") != -1)
   {
@@ -578,7 +561,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         Serial.println(" ");
       }
     }
+    uint8_t irrig_percent =  parsed["water"].as<uint8_t>();
+    //TODO: write in the PG memmory
     LOGLN(manual_program);
+
   }
 }
 void send_web(char *topic, unsigned int length, const char *id)
@@ -594,23 +580,6 @@ void send_web(char *topic, unsigned int length, const char *id)
   root.printTo(json);
 
   mqttClient.publish((String(sys.devUuid) + ack_topic).c_str(), (const uint8_t *)json, strlen(json), false);
-}
-String getValue(String data, char separator, int index)
-{
-  int found = 0;
-  int strIndex[] = {0, -1};
-  int maxIndex = data.length() - 1;
-
-  for (int i = 0; i <= maxIndex && found <= index; i++)
-  {
-    if (data.charAt(i) == separator || i == maxIndex)
-    {
-      found++;
-      strIndex[0] = strIndex[1] + 1;
-      strIndex[1] = (i == maxIndex) ? i + 1 : i;
-    }
-  }
-  return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
