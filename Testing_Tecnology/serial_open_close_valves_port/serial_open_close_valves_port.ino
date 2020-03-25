@@ -153,6 +153,20 @@ void loop()
       }
       Serial.println(" ");
     }
+    if (a == 102) // Press F to change the irrigation percentage
+    {
+      write_percentage_pg(144, 22); //PROG A
+      //write_percentage_pg(146, 22); //PROG B
+      //write_percentage_pg(148, 22);//PROG C
+      //write_percentage_pg(150, 22);//PROG D
+      //write_percentage_pg(152, 33);//PROG E
+      //write_percentage_pg(154, 33);//PROG F
+    }
+    if (a == 103)
+    {
+
+      //First element the position in memmory and the second %
+    }
   }
 
   while (softSerial.available())
@@ -275,4 +289,68 @@ uint8_t time_to_pg_format(uint8_t hours, uint8_t minutes)
     }
     return (60 + 12 * hours + times_minutes);
   }
+}
+void write_percentage_pg(uint16_t position, uint16_t percentage)
+{
+  //First I obtein the value in PG format
+  String str_percen = String(percentage, HEX);
+  str_percen.toUpperCase();
+  //If is less than 0x0F I add a 0
+  if (str_percen.length() != 2)
+    str_percen = '0' + str_percen;
+  //Then I calculate the position, the first one is 0x90
+  String irrig_pos = String(position, HEX);
+  if (irrig_pos.length() != 2)
+    irrig_pos = '0' + irrig_pos;
+  irrig_pos.toUpperCase();
+  if (percentage > 255)
+  {
+    //Then I copy in the buffer to send it
+    cmd_write_data[13] = '0';
+    cmd_write_data[14] = irrig_pos.charAt(0);
+    cmd_write_data[15] = irrig_pos.charAt(1);
+    cmd_write_data[17] = '0'; //str_percen.charAt(0);
+    cmd_write_data[18] = '1';
+    calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+    softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+
+    delay(1000);
+    //I change the irrig time also
+    str_percen = String(percentage - 256, HEX);
+    str_percen.toUpperCase();
+    //If is less than 0x0F I add a 0
+    if (str_percen.length() != 2)
+      str_percen = '0' + str_percen;
+  }
+  else
+  {
+    cmd_write_data[13] = '0';
+    cmd_write_data[14] = irrig_pos.charAt(0);
+    cmd_write_data[15] = irrig_pos.charAt(1);
+    cmd_write_data[17] = '0'; //str_percen.charAt(0);
+    cmd_write_data[18] = '0';
+    calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+    softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+    delay(1000);
+  }
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+  {
+    Serial.write(cmd_write_data[i]);
+  }
+  Serial.println(" ");
+  irrig_pos = String(position + 1, HEX);
+  if (irrig_pos.length() != 2)
+    irrig_pos = '0' + irrig_pos;
+  irrig_pos.toUpperCase();
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = irrig_pos.charAt(0);
+  cmd_write_data[15] = irrig_pos.charAt(1);
+  cmd_write_data[17] = str_percen.charAt(0);
+  cmd_write_data[18] = str_percen.charAt(1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(800);
+  Serial.println(" ");
 }
