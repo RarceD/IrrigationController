@@ -126,8 +126,8 @@ void setup()
   sys.id = 3;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '1';
-  sys.assigned_output[0] = 3;
-  sys.assigned_output[1] = 4;
+  sys.assigned_output[0] = 1;
+  sys.assigned_output[1] = 2;
   sys.assigned_output[2] = 5;
   sys.assigned_output[3] = 6;
   char ack[] = "##OK03##";
@@ -136,7 +136,6 @@ void setup()
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys);
   */
-
   flash.readAnything(FLASH_SYS_DIR, sys);
   manager.init();
   driver.setPreambleLength(8);
@@ -221,8 +220,8 @@ void loop()
     }
     if (!MODE_AWAKE)
     {
-      //driver.sleep();
-      //lowPower.sleep_delay(200);
+      driver.sleep();
+      lowPower.sleep_delay(200);
     }
     if (rtc_interrupt)
     {
@@ -248,12 +247,6 @@ void loop()
       }
       delay(10);
     }
-  }
-
-  if (Serial.available())
-  {
-    int a = Serial.read();
-    send_master(ACK);
   }
 }
 
