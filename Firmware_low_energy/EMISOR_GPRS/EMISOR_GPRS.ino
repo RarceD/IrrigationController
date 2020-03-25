@@ -106,7 +106,6 @@ bool rf_flag = false;
 uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
 Jam jam;
 sysVar sys;
-// manual man;
 msg_received_all ack;
 // Don't put this on the stack:
 
@@ -206,6 +205,7 @@ void setup()
 /******************************************************************* main program  ************************************************************************************/
 void loop()
 {
+  
   mqttClient.loop();
   if (!mqttClient.connected())
   {
@@ -239,6 +239,36 @@ void loop()
     root.printTo(json);
     mqttClient.publish(String("debug_vyr").c_str(), (const uint8_t *)json, strlen(json), false);
     millix = millis();
+  }
+  
+  if (!digitalRead(PCINT_PIN))
+  {
+    Serial.println("BUTTON PRESSED");
+    getAllFromPG();
+  }
+  if (Serial.available())
+  {
+    int a = Serial.read();
+    if (a == 97)
+    { //If I pressed A
+      //First the program A
+      //uint8_t start[6][2];
+      //uint16_t irrigTime[128];
+      for (int n = 0; n < 6; n++)
+      {
+        Serial.print(prog[0].start[n][0]);
+        Serial.print(":");
+        Serial.print(prog[0].start[n][1]);
+        Serial.print("__");
+      }
+      Serial.println("");
+      for (int n = 0; n < 50; n++)
+      {
+        Serial.print(prog[0].irrigTime[n]);
+        Serial.print(":");
+      }
+      Serial.println("");
+    }
   }
 }
 /*******************************************************************   functions     ************************************************************************************/
@@ -539,7 +569,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         LOG(":");
         LOGLN(time_valves[number_valves][1]);
       }
-      //TODO: obtein the number of the valves and write the EEPROM memmory in correct positions
+      //Obtein the number of the valves and write the EEPROM memmory in correct positions
       for (int index_compleat = 0; index_compleat < valves.size(); index_compleat++)
       {
         uint16_t val = time_to_pg_format(time_valves[index_compleat][0], time_valves[index_compleat][1]);
@@ -568,7 +598,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         Serial.println(" ");
       }
     }
-    //TODO: write in the PG memmory the irrig %
+    //Write in the PG memmory the irrig %
     uint16_t irrig_percent = parsed["water"].as<uint16_t>();
     if (parsed["water"].success())
       write_percentage_pg(position_percentage, irrig_percent);
@@ -844,4 +874,237 @@ void write_percentage_pg(uint16_t position, uint16_t percentage)
     Serial.write(cmd_write_data[i]);
   delay(800);
   Serial.println(" ");
+}
+
+void getAllFromPG() //this function get all data from PG
+{
+  bool defined;
+  uint8_t i, m, n, v;
+  int index, addrInt;
+  String aux, addr = "200";
+  uint8_t bookEnd = ceil((double)(MAX_CHILD * 4) / 64);
+
+  pgCommand(cmd_write_flag, sizeof(cmd_write_flag)); //clear memmory flag
+  //getPGTime(true);                                   //read date and time
+  memmoryHandler(3, false); //read arranque
+  for (i = 0; i < TOTAL_PROG; i++)
+  {                 //for each program
+    progDef[i] = 0; //init flag as prog not defined
+    for (j = 0; j < TOTAL_START; j++)
+    { //for each arranque
+      if ((prog[i].start[j][0] != 0xff) && (prog[i].start[j][1] != 0xff))
+      {                 //if arranque at least one arranque is defined
+        progDef[i] = 1; //set defined flag as true
+        break;          //leave loop
+      }
+    }
+    if (progDef[i])
+    {                               //if al least one arranque is defined
+      memmoryHandler(i + 8, false); //read tiempo de riego
+      progDef[i] = 0;               //initialize defined flag to false
+      for (v = 0; v < TOTAL_VALVE; v++)
+      { //for each valve
+        if (prog[i].irrigTime[v] != 0xff)
+        {                 //if at least one tiempo de riego is defined
+          progDef[i] = 1; //set defined flag as true
+          break;          //leave loop
+        }
+      }
+    }
+    if (progDef[i])             //if at least one arranque and one tiempo de riego is defined
+      memmoryHandler(1, false); //read aporte de agua, interval, starday and wateringday
+  }
+
+  for (i = 0, m = 0, valveDef[m] = 0; i < bookEnd; i++)
+  {
+    cmd_read_book[ADDR_INDEX] = addr.charAt(0);
+    cmd_read_book[ADDR_INDEX + 1] = addr.charAt(1);
+    cmd_read_book[ADDR_INDEX + 2] = addr.charAt(2);
+    pgCommand(cmd_read_book, sizeof(cmd_read_book));
+    pg = String(pgData);
+    index = pg.indexOf("#") + 1;
+    pg = pg.substring(index, index + BOOK_LEN);
+    DPRINT("Assignment: ");
+    DPRINTLN(pg.c_str());
+    for (n = 0, index = 0; index < pg.length();)
+    {
+      aux = pg.substring(index, pg.indexOf(" ", index));
+      if (aux != "FF")
+      {
+        sys.childValves[m][n] = strtol(aux.c_str(), NULL, HEX) + 1;
+        valveDef[m] = 1;
+      }
+      else
+        sys.childValves[m][n] = 0;
+      index += aux.length() + 1;
+      if (n == 3)
+      {
+        m++;
+        n = 0;
+        valveDef[m] = 0;
+      }
+      else
+        n++;
+    }
+    addrInt = strtol(addr.c_str(), NULL, HEX);
+    addrInt += 64;
+    addr = String(addrInt, HEX);
+    addr.toUpperCase();
+  }
+  digitalWrite(CS_RF, HIGH);
+  flash.eraseSector(SYS_VAR_ADDR);
+  flash.writeByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
+  digitalWrite(CS_RF, LOW);
+}
+
+void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory in a given range of address - It is not changed
+{
+
+  int index;
+  String str, aux;
+  uint8_t p, a, v, m, ptr;
+  i = PAYLOAD_INDEX + strlen(sys.devUuid) + 1;
+
+  if (pos == 1)
+  {                                  //if bit 1 is 1
+    cmd_read_book[ADDR_INDEX] = '0'; //set address to read
+    cmd_read_book[ADDR_INDEX + 1] = '9';
+    cmd_read_book[ADDR_INDEX + 2] = '0';
+    pgCommand(cmd_read_book, sizeof(cmd_read_book));    //send read page command to pg
+    pg = String(pgData);                                //convert it into string
+    index = pg.indexOf("#") + 1;                        //point index to first byte read
+    str = pg.substring(index, index + APORTE_AGUA_LEN); //get aporte de agua bytes
+    DPRINTLN(F("***** Aporte de agua *****"));
+    for (p = 0, ptr = 0; p < TOTAL_PROG; p++, ptr += aux.length() + 1, i++)
+    {                                                  //for each program
+      aux = str.substring(str.indexOf(" ", ptr), ptr); //get first byte of aporte de agua
+      data[i] = strtol(aux.c_str(), NULL, HEX);        //convert it and save into data
+      prog[p].waterPercent = data[i] * 256;            //convert value to 2 byte integer
+      ptr += aux.length() + 1;                         //point index to next byte
+      aux = str.substring(str.indexOf(" ", ptr), ptr); //get second byte of aporte de agua
+      data[++i] = strtol(aux.c_str(), NULL, HEX);      //convert it and save into data
+      prog[p].waterPercent += data[i];                 //convert it in 2 byte integer and save it
+
+      DPRINT(F("Prog "));
+      DPRINT((char)(p + 'A'));
+      DPRINTLN(": " + String(prog[p].waterPercent));
+    }
+    index += str.length() + 1;                          //point index to the next range of bytes
+    str = pg.substring(index, index + INTERV_INIT_LEN); //get interval and start day bytes
+    DPRINTLN(F("***** Intervalo y Start day *****"));
+    for (p = 0, ptr = 0; p < TOTAL_PROG; p++, ptr += aux.length() + 1)
+    {                                                                //for each program
+      aux = str.substring(str.indexOf(" ", ptr), ptr);               //get interval byte
+      data[i++] = prog[p].interval = strtol(aux.c_str(), NULL, HEX); //convert into integer and save it
+      ptr += aux.length() + 1;                                       //point index to next byte
+      aux = str.substring(str.indexOf(" ", ptr), ptr);               //get start day byte
+      data[i++] = prog[p].startDay = strtol(aux.c_str(), NULL, HEX); //convert into integer and save it
+      DPRINT(F("*Prog "));
+      DPRINTLN((char)(p + 'A'));
+      DPRINT(F("  interval: "));
+      DPRINTLN(prog[p].interval);
+      DPRINT(F("  startDay: "));
+      DPRINTLN(prog[p].startDay);
+    }
+    index += str.length() + 1;                       //point index to next range of byte
+    str = pg.substring(index, index + WATERING_LEN); //get watering days
+    DPRINTLN(F("***** watering day *****"));
+    for (p = 0, ptr = 0; p < TOTAL_PROG; p++, ptr += aux.length() + 1)
+    {                                                                   //for each program
+      aux = str.substring(str.indexOf(" ", ptr), ptr);                  //get watering day byte
+      data[i++] = prog[p].wateringDay = strtol(aux.c_str(), NULL, HEX); //convert into integer and save it
+      DPRINT(F("Prog "));
+      DPRINT((char)(p + 'A'));
+      DPRINTLN(": " + String(prog[p].wateringDay));
+    }
+  }
+  else if (pos == 3)
+  {                                  //if bit 3 is 1
+    cmd_read_book[ADDR_INDEX] = '1'; //set address to read
+    cmd_read_book[ADDR_INDEX + 1] = 'A';
+    cmd_read_book[ADDR_INDEX + 2] = '0';
+    pgCommand(cmd_read_book, sizeof(cmd_read_book)); //read book
+    pg = String(pgData);                             //convert it into string
+    index = pg.indexOf("#") + 1;                     //point index to first byte read
+    pg = pg.substring(index, index + BOOK_LEN);      //get all book bytes
+    cmd_read_line[ADDR_INDEX] = '1';                 //set adrees to read remaining bytes
+    cmd_read_line[ADDR_INDEX + 1] = 'E';
+    cmd_read_line[ADDR_INDEX + 2] = '0';
+    pgCommand(cmd_read_line, sizeof(cmd_read_line)); //read line
+    aux = String(pgData);                            //convert it into string
+    index = aux.indexOf("#") + 1;                    //point index to first byte read
+    aux = aux.substring(index, index + 23);          //get 8 byte from bytes read
+    pg = pg + " " + aux;                             //add those 8 byte to pg string
+    index = 0;
+    DPRINTLN(F("***** Arranques *****"));
+    for (p = 0, ptr = 0; p < TOTAL_PROG; p++, index += str.length() + 1, ptr = 0)
+    {                                                  //for each program
+      str = pg.substring(index, index + ARRANQUE_LEN); //get string with arranque of its program
+      for (a = 0; a < TOTAL_START; a++, ptr += aux.length() + 1)
+      {                                                                   //for each arraque
+        aux = str.substring(str.indexOf(" ", ptr), ptr);                  //get hour
+        data[i++] = prog[p].start[a][0] = strtol(aux.c_str(), NULL, HEX); //save it
+        ptr += aux.length() + 1;                                          //point index to next value
+        aux = str.substring(str.indexOf(" ", ptr), ptr);                  //get min
+        data[i++] = prog[p].start[a][1] = strtol(aux.c_str(), NULL, HEX); //save it
+      }
+      DPRINT(F("Prog "));
+      DPRINT((char)(p + 'A'));
+      DPRINTLN(": " + String(prog[p].start[0][0]) + ":" + String(prog[p].start[0][1]) +
+               ", " + String(prog[p].start[1][0]) + ":" + String(prog[p].start[1][1]) +
+               ", " + String(prog[p].start[2][0]) + ":" + String(prog[p].start[2][1]) +
+               ", " + String(prog[p].start[3][0]) + ":" + String(prog[p].start[3][1]) +
+               ", " + String(prog[p].start[4][0]) + ":" + String(prog[p].start[4][1]) +
+               ", " + String(prog[p].start[5][0]) + ":" + String(prog[p].start[5][1]));
+    }
+  }
+  else if (pos > 7)
+  {                                              //if one of the bit of second byte is 1
+    p = pos - 8;                                 //define program
+    cmd_read_book[ADDR_INDEX] = (pos / 2) + '0'; //set address to read
+    (pos % 2) ? cmd_read_book[ADDR_INDEX + 1] = '8' : cmd_read_book[ADDR_INDEX + 1] = '0';
+    cmd_read_book[ADDR_INDEX + 2] = '0';
+    DPRINTLN(F("***** Tiempos de riego *****"));
+    DPRINT(F("Prog "));
+    DPRINT((char)(p + 'A'));
+    DPRINT(F(": "));
+    for (v = 0, a = 0; a < 2; a++)
+    {                                                  //read 64 bytes of irrigation time two times, 128
+      pgCommand(cmd_read_book, sizeof(cmd_read_book)); //read first 64 valve irrigtation time
+      pg = String(pgData);                             //convert it into string
+      index = pg.indexOf("#") + 1;                     //point index to firt byte read
+      str = pg.substring(index, index + IRRIG_TIME_LEN);
+      for (m = 0, ptr = 0; m < 64; v++, m++, ptr += aux.length() + 1)
+      {                                                                    //for each valve
+        aux = str.substring(str.indexOf(" ", ptr), ptr);                   //get value
+        data[i++] = prog[p].irrigTime[v] = strtol(aux.c_str(), NULL, HEX); //convert it to integer and save it
+        DPRINT("v" + String(v + 1) + String(":"));
+        DPRINT(prog[p].irrigTime[v]);
+        DPRINT(" ");
+      }
+      if (cmd_read_book[ADDR_INDEX + 1] == '0') //set address to the next 64 bytes
+        cmd_read_book[ADDR_INDEX + 1] = '4';
+      else
+        cmd_read_book[ADDR_INDEX + 1] = 'C';
+    }
+    DPRINTLN();
+  }
+  digitalWrite(CS_RF, HIGH);        //unselect rf
+  flash.eraseSector(PROG_VAR_ADDR); //erase program variable sector
+  flash.writeByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
+  ;                         //write program variable changes
+  digitalWrite(CS_RF, LOW); //select again rf
+  if (sendChange)
+  {
+    data[CMD_INDEX + 1] = pos; //set command parameter
+    data[CMD_INDEX] = MEMMORY; //set comand id
+    for (j = 0; j < sys.nChild; j++)
+    { //for each child
+      DPRINT("Send change to OASIS: ");
+      DPRINTLN(j + 1);
+      jam.fillWithString(data, String(sys.oasisUuid[j]), PAYLOAD_INDEX); //add child uuid to data
+      //comError[j] = !sendCommand(data, i, sys.oasisRfId[j]);             //send command to child
+    }
+    // checkComError(i);
+  }
 }
