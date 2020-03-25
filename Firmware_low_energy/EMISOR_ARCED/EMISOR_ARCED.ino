@@ -132,8 +132,8 @@ bool start_programA_ones, start_programB_ones, start_programC_ones, start_progra
 
 bool oasis_actions;
 bool pg_interact_while_radio;
+bool auto_program_flag;
 uint8_t counter_syn;
-uint8_t number_msg_compleatly_sent;
 uint8_t rf_msg_tries;
 /******************************************************************* setup section ************************************************************************************/
 void setup()
@@ -223,14 +223,12 @@ void loop()
     rtc.updateTime();
     Serial.println(rtc.stringTime());
     oasis_actions = true;
-    millix = millis();
   }
   if (oasis_actions) // When something
   {
     // Always the first message have to be sync
     start = millis();
     bool all_nodes_ack = false;
-    number_msg_compleatly_sent = radio_waitting_msg.num_message_flags;
     pg_interact_while_radio = false;
     rf_msg_tries++;           // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
     while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
@@ -271,6 +269,7 @@ void loop()
   {
     if (prog[0].irrigTime[index_prog_A] != 255 && prog[0].irrigTime[index_prog_A] != 0)
     {
+      auto_program_flag = true; //Do not clean the buffer before sendding
       Serial.print("OPEN V");
       Serial.println(index_prog_A + 1);
       timerA.deleteTimer(timer_A);
@@ -310,6 +309,7 @@ void loop()
   {
     if (prog[1].irrigTime[index_prog_B] != 255 && prog[1].irrigTime[index_prog_B] != 0)
     {
+      auto_program_flag = true; //Do not clean the buffer before sendding
       Serial.print("OPEN V");
       Serial.println(index_prog_B + 1);
       timerB.deleteTimer(timer_B);
@@ -351,6 +351,7 @@ void loop()
   {
     if (prog[2].irrigTime[index_prog_C] != 255 && prog[2].irrigTime[index_prog_C] != 0)
     {
+      auto_program_flag = true; //Do not clean the buffer before sendding
       Serial.print("OPEN V");
       Serial.println(index_prog_C + 1);
       timerC.deleteTimer(timer_C);
@@ -392,6 +393,7 @@ void loop()
   {
     if (prog[3].irrigTime[index_prog_D] != 255 && prog[3].irrigTime[index_prog_D] != 0)
     {
+      auto_program_flag = true; //Do not clean the buffer before sendding
       Serial.print("OPEN V");
       Serial.println(index_prog_D + 1);
       timerD.deleteTimer(timer_D);
@@ -433,6 +435,7 @@ void loop()
   {
     if (prog[4].irrigTime[index_prog_E] != 255 && prog[4].irrigTime[index_prog_E] != 0)
     {
+      auto_program_flag = true; //Do not clean the buffer before sendding
       Serial.print("OPEN V");
       Serial.println(index_prog_E + 1);
       timerE.deleteTimer(timer_E);
@@ -474,6 +477,7 @@ void loop()
   {
     if (prog[5].irrigTime[index_prog_F] != 255 && prog[5].irrigTime[index_prog_F] != 0)
     {
+      auto_program_flag = true; //Do not clean the buffer before sendding
       Serial.print("OPEN V");
       Serial.println(index_prog_F + 1);
       timerF.deleteTimer(timer_F);
@@ -561,6 +565,10 @@ void prepare_message() // This function prepare the messages for been sent
     }
     else if (radio_waitting_msg.request_STOP_ALL[msg])
       send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
+  //This is for debugging
+  for (uint8_t data_index = 0; data_index < sizeof(data); data_index++)
+    Serial.write(data[data_index]);
+  Serial.println(" ");
 }
 void check_time() // This function test if the current time fix with the program time
 {
@@ -918,9 +926,9 @@ void listen_nodo() // if the oasis send something i listen
       break;
     }
   }
-  if (ack.id_node[0] && ack.id_node[1] || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  if ((ack.id_node[0] && ack.id_node[1] || rf_msg_tries > 3) && !auto_program_flag) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
-
+auto_program_flag = false;
     ack.id_node[0] = false;
     ack.id_node[1] = false;
     rf_msg_tries = 0;
