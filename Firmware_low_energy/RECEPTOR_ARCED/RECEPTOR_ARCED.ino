@@ -123,16 +123,16 @@ void setup()
   flash.begin();
   // I have to change the flash info for each devise:
   /*
-  sys.id = 2;
+  sys.id = 3;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '1';
   sys.assigned_output[0] = 3;
   sys.assigned_output[1] = 4;
   sys.assigned_output[2] = 5;
   sys.assigned_output[3] = 6;
-  char ack[] = "##OK02##";
+  char ack[] = "##OK03##";
   for (int i = 0; i < sizeof(ack); i++)
-    sys.ack_msg[i] = ack[i];
+    sys.ack_msg[i] = ack[i]; 
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys);
   */
@@ -141,8 +141,10 @@ void setup()
   manager.init();
   driver.setPreambleLength(8);
   driver.setTxPower(TX_PWR, false);
-  manager.setRetries(10);
-  manager.setTimeout(150);
+  manager.setRetries(10); // I change this value but I don`t now what is the best
+  // This value should be random for not overlapping
+  uint8_t time_retries = random(100, 250);
+  manager.setTimeout(time_retries);
   SWire.begin();
   rtc.begin();
   rtc.set24Hour();
@@ -219,8 +221,8 @@ void loop()
     }
     if (!MODE_AWAKE)
     {
-      driver.sleep();
-      lowPower.sleep_delay(200);
+      //driver.sleep();
+      //lowPower.sleep_delay(200);
     }
     if (rtc_interrupt)
     {
@@ -246,6 +248,12 @@ void loop()
       }
       delay(10);
     }
+  }
+
+  if (Serial.available())
+  {
+    int a = Serial.read();
+    send_master(ACK);
   }
 }
 
@@ -595,10 +603,13 @@ void send_master(uint8_t msg) // I just have to send the flash info for getting 
 {
   if (msg == ACK)
   {
-    Serial.println("I send ack to master");
+    // Serial.println("I send ack to master");
     for (int i = 0; i < sizeof(sys.ack_msg); i++)
       data[i] = sys.ack_msg[i];
   }
+  uint8_t batery_level = batLevel();
+  data[9] = (batery_level / 10)+ '0';
+  data[10] = (batery_level % 10) + '0';
   manager.sendtoWait(data, 15, SERVER_ADDRESS);
 }
 void change_time(int hours, int minutes, int day, int month, int seconds, int year)

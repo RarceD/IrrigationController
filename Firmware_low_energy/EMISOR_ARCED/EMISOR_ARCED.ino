@@ -523,6 +523,7 @@ void loop()
       // The first element is the time of the valve and the second element is
       if (man.millix[index_manual] != 0 && millis() - man.millix[index_manual] >= man.time_to_stop[index_manual])
       {
+        auto_program_flag = true; //Do not clean the buffer before sendding
         Serial.print("APAGO LA VALVULA MANUAL: ");
         Serial.println(man.valve[index_manual]);
         //I set a flag, when the time of waking up starts all the messages
@@ -658,6 +659,7 @@ void waitValveCloseA()
 {
   Serial.print("CLOSE V");
   Serial.println(index_prog_A + 1);
+  auto_program_flag = true; //Do not clean the buffer before sendding
   radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
   radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = index_prog_A + 1;
   radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
@@ -675,6 +677,8 @@ void waitValveCloseB()
   radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = index_prog_B + 1;
   radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
   radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
+  auto_program_flag = true; //Do not clean the buffer before sendding
+
   //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_B + 1, 0, 0, asignacion);
   delay(1000);
   index_prog_B++;
@@ -689,6 +693,7 @@ void waitValveCloseC()
   radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = index_prog_C + 1;
   radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
   radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
+  auto_program_flag = true; //Do not clean the buffer before sendding
   delay(1000);
   index_prog_C++;
   start_programC = true;
@@ -702,6 +707,7 @@ void waitValveCloseD()
   radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
   radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
   //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_D + 1, 0, 0, asignacion);
+  auto_program_flag = true; //Do not clean the buffer before sendding
   delay(1000);
   index_prog_D++;
   start_programD = true;
@@ -715,6 +721,8 @@ void waitValveCloseE()
   radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = index_prog_E + 1;
   radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
   radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
+  auto_program_flag = true; //Do not clean the buffer before sendding
+  
   delay(1000);
   index_prog_E++;
   start_programE = true;
@@ -728,6 +736,8 @@ void waitValveCloseF()
   radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
   radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
   //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_F + 1, 0, 0, asignacion);
+  auto_program_flag = true; //Do not clean the buffer before sendding
+  
   delay(1000);
   index_prog_F++;
   start_programF = true;
@@ -904,31 +914,33 @@ void listen_nodo() // if the oasis send something i listen
     switch (buf[5])
     {
     case '1':
-      Serial.println("Node 1 OK");
+      // Serial.println("Node 1 OK");
       ack.id_node[0] = true;
       break;
     case '2':
-      Serial.println("Node 2 OK");
+      // Serial.println("Node 2 OK");
       ack.id_node[1] = true;
       break;
     case '3':
-      Serial.println("Node 3 OK");
+      // Serial.println("Node 3 OK");
       ack.id_node[2] = true;
       break;
     case '4':
-      Serial.println("Node 4 OK");
+      // Serial.println("Node 4 OK");
       ack.id_node[3] = true;
       break;
     case '5':
-      Serial.println("Node 5 OK");
+      // Serial.println("Node 5 OK");
       ack.id_node[4] = true;
       break;
     default:
       Serial.println("Everything is bad");
       break;
     }
+    for (uint8_t inde_X = 0; inde_X < 20; inde_X++)
+      Serial.write(buf[inde_X]);
+    Serial.println(" ");
   }
-  bool clear_buffer = false;
   if ((ack.id_node[0] && ack.id_node[1] && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
     ack.id_node[0] = false;
