@@ -32,6 +32,8 @@ void loop()
       json_program(0);
     if (a == 98)
       json_clear_starts(0);
+    if (a == 99)
+      Serial.println(pg_reag_to_web(121));
   }
 }
 void json_program(uint8_t program)
@@ -98,6 +100,28 @@ void json_clear_starts(uint8_t program)
 
 uint16_t pg_reag_to_web(uint16_t pg_time) //It return the time ok in minutes to the web
 {
+    //pg_time = 60 + 12 * hours + minutes);
+    //combinations = {pg_time, hours}
+    uint8_t combinations[12][2] = {{72, 1}, {84, 2}, {96, 3}, {108, 4}, {120, 5}, {132, 6}, {144, 7}, {156, 8}, {168, 9}, {180, 10}, {192, 11}, {204, 12}};
+    if (pg_time < 60)
+        return pg_time;
+    uint8_t index = 0;
+    uint16_t solution = 0;
+    uint16_t hours;
+    while (index < 12) //First obtein the hours
+    {
+        if (pg_time < combinations[index][0])
+        {
+            hours = (uint16_t)combinations[index][1];
+            break;
+        }
+        index++;
+    } 
 
-  return 0;
+    uint16_t min = ((uint16_t)combinations[index][0] - pg_time ) * 5; 
+    if (min >= 60)
+        min = 0;
+    //TODO: FINISH THIS SHIT TO RETURN IN HUMAN FORMAT
+    printf("La hora real es: %i:%i \n", hours,min);
+    return hours*60 + min;
 }
