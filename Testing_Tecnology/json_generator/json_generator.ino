@@ -1,36 +1,69 @@
 #include <ArduinoJson.h>
+#include <JamAtm-Vyrsa.h>
 
+#define CS_M 22
+#define CS_RF 23
+
+SPIFlash flash(CS_M);
+typedef struct
+{
+  uint8_t interval;
+  uint8_t startDay;
+  uint8_t wateringDay;
+  uint16_t waterPercent;
+  uint8_t start[6][2];
+  uint16_t irrigTime[128];
+} program;
+program prog[6];
 void setup()
 {
   Serial.begin(115200);
+  flash.powerUp();
+  flash.begin();
+  flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
+  //Generate the structure of the program
   DynamicJsonBuffer jsonBuffer(200);
   JsonObject &root = jsonBuffer.createObject();
 
-  root["prog"] = 'A';
-  JsonArray &starts = root.createNestedArray("starts");
-  starts.add("12:45");
-  starts.add("13:05");
-  starts.add("02:35");
-  starts.add("01:15");
-  root["water"] = 100;
-  JsonArray &valves = root.createNestedArray("valves");
- JsonArray &irrig = root.createNestedArray("irrig");
+  char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+  for (uint8_t index_program = 0; index_program < 6; index_program++)
+  {
+    root["prog"] = String(program_letters[index_program]);
+    JsonArray &starts = root.createNestedArray("starts");
+    //Generate all the starts
+    for (uint8_t index_time = 0; index_time < 6; index_time++)
+      if (prog[index_program].start[index_time][0] != 255)
+        starts.add(String(prog[index_program].start[index_time][0]) + ":" + String(prog[index_program].start[index_time][1]));
+    root["water"] = (int)(prog[index_program].waterPercent);
+    JsonArray &valves = root.createNestedArray("valves");
+    for (uint8_t index_valves = 0; index_valves < 128; index_valves++)
+    {
+       if (String(prog[index_program].irrigTime[index_valves]) != "255")
+       {
+        JsonObject &irrig = root.createNestedObject("");
+        irrig["v"] = index_valves + 1;
+        uint8_t time_in_format_h = prog[index_program].irrigTime[index_valves] /60;
+        uint8_t time_in_format_m = prog[index_program].irrigTime[index_valves] % 60;
+        String formated_time_json = "00:00";
+        if (time_in_format_h < 10){
+          formated_time_json
+        }  
+        irrig["time"] = String(time_in_format_h) + ":" + String(time_in_format_m);
+        valves.add(irrig);
+      }
+    }
 
-  valves.add(irrig);
-  irrig.add(12);
-  irrig.add(12);
+    Serial.println();
+    root.prettyPrintTo(Serial);
+  }
 
-  //irrig["hola"] = 12;
-  //irrig["adios"] = 12;
+  //https://arduinojson.org/v6/api/jsonobject/createnestedarray/
 
   //valves.add("time");
   // valves.add("time : 12:12");
   //JsonArray &irrig = root.createNestedArray("irrig");
   //irrig.add("12:45");
   //irrig.add("13:05");
-  Serial.println();
-
-  root.prettyPrintTo(Serial);
   // This prints:
   // {
   //   "sensor": "gps",
