@@ -196,8 +196,8 @@ void setup()
   //  radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
   //}
   print_flash();
-  connectSIM();
-  connectMqtt();
+  //connectSIM();
+  //connectMqtt();
   delay(50);
   millix = millis();
 }
@@ -206,13 +206,13 @@ void setup()
 void loop()
 {
   
-  mqttClient.loop();
-  if (!mqttClient.connected())
-  {
-    Serial.println("Mqtt connection fail");
-    connectMqtt();
-    delay(5);
-  }
+  //mqttClient.loop();
+  //if (!mqttClient.connected())
+  //{
+  //  Serial.println("Mqtt connection fail");
+  //  connectMqtt();
+  //  delay(5);
+  //}
   // Every 20 seconds I publish that I am ALIVE
   if (millis() - millix >= 20000) // Printing that I am not dead
   {
