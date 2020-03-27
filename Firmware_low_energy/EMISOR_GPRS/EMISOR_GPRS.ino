@@ -200,6 +200,7 @@ void setup()
   connectMqtt();
   delay(500);
   millix = millis();
+  json_connect_app();
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -347,12 +348,13 @@ void connectMqtt()
 }
 void mqttCallback(char *topic, byte *payload, unsigned int length)
 {
-  char json[MAX_JSON_SIZE];
-  String sTopic, jsParsed;
-  uint8_t i, id, len, val, h, mn, prevChildValves[4];
-  DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
   if (!length)
     return;
+  char json[MAX_JSON_SIZE];
+  String sTopic, jsParsed;
+  DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
+  // Serial.println(length);
+  // strcpy(json, (char*)payload); //one alternative is using c fucntion to convert
   jsParsed = jam.byteArrayToString(payload, length);
   JsonObject &parsed = jsonBuffer.parseObject(jsParsed);
   DPRINT("Mqtt received: ");
@@ -363,13 +365,19 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   // Then I identify the topic related with
   if (sTopic.indexOf("manvalve") != -1)
   {
+    JsonObject &root = jsonBuffer.createObject();
+    root.set("id", identifier);
+    root.set("success", "true");
+    root.printTo(json);
+    mqttClient.publish((String(sys.devUuid) + "/manvalve").c_str(), (const uint8_t *)json, strlen(json), false);
+
+    // send_web("/manvalve", sizeof("/manvalve"), identifier.c_str());
     Serial.println("Publish in /manvalve/app");
-    send_web("/manvalve", sizeof("/manvalve"), identifier.c_str());
     //I firts of all parse the message
     JsonArray &valves = parsed["valves"];
     //I obtein the values of the parser info:
     String valve_time;
-    int valve_number[4], valve_action[4], valve_min[4], valve_hours[4];
+    int valve_number[25], valve_action[25], valve_min[25], valve_hours[25];
     //Start the game:
 
     for (uint8_t index_oasis = 0; index_oasis < valves.size(); index_oasis++)
@@ -392,7 +400,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       }
       else if (valve_action[index_oasis] == 0)
       {
-        LOG("APAGAR LA:");
+        LOG("APAGAR LA: ");
         LOGLN(valve_number[index_oasis]);
         // radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
         // radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number[index_oasis];
@@ -867,7 +875,6 @@ void write_percentage_pg(uint16_t position, uint16_t percentage)
   delay(800);
   Serial.println(" ");
 }
-
 void getAllFromPG() //this function get all data from PG
 {
   bool defined;
@@ -948,7 +955,6 @@ void getAllFromPG() //this function get all data from PG
   flash.writeByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   digitalWrite(CS_RF, LOW);
 }
-
 void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory in a given range of address - It is not changed
 {
 
@@ -1175,7 +1181,7 @@ void json_clear_starts(uint8_t program)
   JsonObject &root = jsonBuffer.createObject();
   root["prog"] = String(program_letters[program]);
   JsonArray &starts = root.createNestedArray("starts");
-  
+
   // Serial.println();
   // root.prettyPrintTo(Serial);
   char json[MAX_JSON_SIZE];
@@ -1197,4 +1203,18 @@ uint16_t pg_reag_to_web(uint16_t pg_time) //It return the time ok in minutes to 
   uint16_t min = (pg_time - 60 - 12 * (hours - 1)) * 5;
   printf("La hora real es: %i:%i \n", hours, min);
   return (hours * 60 + min);
+}
+void json_connect_app()
+{
+  //Generate the structure of the program via json
+  DynamicJsonBuffer jsonBuffer(500);
+  JsonObject &root = jsonBuffer.createObject();
+  root["uuid"] = String(sys.devUuid);
+  root["model"] = "6011";
+  // char json[500];
+  // root.prettyPrintTo(Serial);
+
+  char json[MAX_JSON_SIZE];
+  root.printTo(json);
+  mqttClient.publish((String(sys.devUuid) + "/connect").c_str(), (const uint8_t *)json, strlen(json), false);
 }

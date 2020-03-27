@@ -4,6 +4,12 @@
 #define CS_M 22
 #define CS_RF 23
 
+#define MAX_NODE_NUMBER 7
+#define MAX_MANUAL_TIMERS 120
+#define UUID_LENGTH 16
+#define TIME_RESPOSE 50000
+#define MAX_NUM_MESSAGES 15
+
 SPIFlash flash(CS_M);
 typedef struct
 {
@@ -14,13 +20,28 @@ typedef struct
   uint8_t start[6][2];
   uint16_t irrigTime[128];
 } program;
+typedef struct
+{
+  uint8_t id;
+  uint8_t nChild;
+  char devUuid[UUID_LEN];
+  uint8_t oasisRfId[MAX_CHILD];
+  char oasisUuid[MAX_CHILD][UUID_LEN];
+  uint8_t childValves[MAX_CHILD][4];
+  uint8_t master_id;
+  uint8_t UUID[UUID_LENGTH];
+  uint8_t nodes_uuid[UUID_LENGTH][MAX_NODE_NUMBER];
+} sysVar;
+
 program prog[6];
+sysVar sys;
 void setup()
 {
   Serial.begin(115200);
   flash.powerUp();
   flash.begin();
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
+  flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
 }
 uint16_t pg_reag_to_web(uint16_t pg_time);
 void loop()
@@ -33,9 +54,9 @@ void loop()
     if (a == 98)
       json_clear_starts(0);
     if (a == 99)
-      Serial.println(pg_reag_to_web(85));
-    if (a == 100)
       json_program_valves(0);
+    if (a == 100)
+    json_connect_app();
   }
 }
 void json_program(uint8_t program)
@@ -150,4 +171,30 @@ void json_program_valves(uint8_t program)
 
   // root.printTo(json);
   // mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
+}
+void json_connect_app()
+{
+  //Generate the structure of the program via json
+  DynamicJsonBuffer jsonBuffer(500);
+  JsonObject &root = jsonBuffer.createObject();
+  root["uuid"] = String(sys.devUuid);
+  root["model"] = "6011";
+  char json[500];
+  root.prettyPrintTo(Serial);
+}
+uint8_t batLevel() {
+  float res;
+  uint8_t a;
+  uint16_t b;
+  ADCSRA |= (1 << 7);
+  analogReference(INTERNAL);
+  for (a = 0; a < 5; a++) {
+    b = analogRead(VREF_IN);
+    delay(1);
+  }
+  res = -0.0186 * pow(b, 2);
+  res += 8.7291 * b - 922;
+  if (res < 0) res = 0;
+  if (res > 100) res = 100;
+  return (res);
 }
