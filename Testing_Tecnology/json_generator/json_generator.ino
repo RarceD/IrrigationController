@@ -10,6 +10,9 @@
 #define TIME_RESPOSE 50000
 #define MAX_NUM_MESSAGES 15
 
+#define VREF_IN 24
+#define VREF_EXT 29
+
 SPIFlash flash(CS_M);
 typedef struct
 {
@@ -56,7 +59,11 @@ void loop()
     if (a == 99)
       json_program_valves(0);
     if (a == 100)
-    json_connect_app();
+      json_connect_app();
+    if (a == 101)
+    {
+      json_query("1233", "AUTO");
+    }
   }
 }
 void json_program(uint8_t program)
@@ -182,19 +189,38 @@ void json_connect_app()
   char json[500];
   root.prettyPrintTo(Serial);
 }
-uint8_t batLevel() {
-  float res;
-  uint8_t a;
+void json_query(char id[], char status[])
+{
   uint16_t b;
-  ADCSRA |= (1 << 7);
+  DynamicJsonBuffer jsonBuffer(500);
+  JsonObject &root = jsonBuffer.createObject();
   analogReference(INTERNAL);
-  for (a = 0; a < 5; a++) {
-    b = analogRead(VREF_IN);
+  for (uint8_t i = 0; i < 3; i++)
+  {
+    b = analogRead(PA0);
     delay(1);
   }
-  res = -0.0186 * pow(b, 2);
-  res += 8.7291 * b - 922;
-  if (res < 0) res = 0;
-  if (res > 100) res = 100;
-  return (res);
+  float bat = (b * 0.0190 - 2.2); //This value is not perfect "-2,2" added
+                                  //REAL ; MEASSURE
+                                  //6,6 ; 8
+                                  //7,4 ; 9
+                                  //8,1 ; 9,9
+                                  //9,1 ; 11,1
+                                  //10 ; 12,1
+                                  //11,3 ; 13.8
+                                  //12 ; 14.6
+
+  int bat_percentage = map((int)round(bat), 6, 13, 5, 100);
+  root["id"] = String(id);
+  root["status"] = String(status);
+  JsonObject &battery = root.createNestedObject("battery");
+  battery["com"] = bat_percentage - 2;
+  battery["prog"] = bat_percentage;
+  JsonObject &oasis = battery.createNestedObject("oasis");
+  oasis["id"] = 1;
+  oasis["bat"] = 78;
+  root["connection"] = 68;
+  JsonArray &active = root.createNestedArray("prog_active");
+  char json[300];
+  root.prettyPrintTo(Serial);
 }

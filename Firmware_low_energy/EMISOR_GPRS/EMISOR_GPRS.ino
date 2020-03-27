@@ -604,6 +604,9 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       write_percentage_pg(position_percentage, irrig_percent);
     LOGLN(manual_program);
   }
+  else if (sTopic.indexOf("query") != -1){
+    json_query(identifier.c_str(),"AUTO");
+  }
 }
 void send_web(char *topic, unsigned int length, const char *id)
 {
@@ -1217,4 +1220,41 @@ void json_connect_app()
   char json[MAX_JSON_SIZE];
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/connect").c_str(), (const uint8_t *)json, strlen(json), false);
+}
+void json_query(const char id[], char status[])
+{
+  uint16_t b;
+  DynamicJsonBuffer jsonBuffer(500);
+  JsonObject &root = jsonBuffer.createObject();
+  analogReference(INTERNAL);
+  for (uint8_t i = 0; i < 3; i++)
+  {
+    b = analogRead(PA0);
+    delay(1);
+  }
+  float bat = (b * 0.0190 - 2.2); //This value is not perfect "-2,2" added
+                                  //REAL ; MEASSURE
+                                  //6,6 ; 8
+                                  //7,4 ; 9
+                                  //8,1 ; 9,9
+                                  //9,1 ; 11,1
+                                  //10 ; 12,1
+                                  //11,3 ; 13.8
+                                  //12 ; 14.6
+
+  int bat_percentage = map((int)round(bat), 6, 13, 5, 100);
+  root["id"] = String(id);
+  root["status"] = String(status);
+  JsonObject &battery = root.createNestedObject("battery");
+  battery["com"] = bat_percentage - 2;
+  battery["prog"] = bat_percentage;
+  JsonObject &oasis = battery.createNestedObject("oasis");
+  oasis["id"] = 1;
+  oasis["bat"] = 78;
+  root["connection"] = 68;
+  JsonArray &active = root.createNestedArray("prog_active");
+  char json[300];
+  root.printTo(json);
+  mqttClient.publish((String(sys.devUuid) + "/query").c_str(), (const uint8_t *)json, strlen(json), false);
+  // root.prettyPrintTo(Serial);
 }
