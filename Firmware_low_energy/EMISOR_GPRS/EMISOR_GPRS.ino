@@ -366,11 +366,9 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   Serial.println(length);
   strcpy(json, (char *)payload); //one alternative is using c fucntion to convert
   JsonObject &parsed = jsonBuffer.parseObject(json);
-  DPRINT("Mqtt received: ");
-  for (int i = 0; i < sizeof(json); i++)
-  {
-    Serial.write(json[i]);
-  }
+  //DPRINT("Mqtt received: ");
+  //for (int i = 0; i < sizeof(json); i++)
+  //  Serial.write(json[i]);
   int identifier = parsed["id"].as<int>(); // This is for the sendding function app
   sTopic = String(topic);
   // Then I identify the topic related with
@@ -469,36 +467,42 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       uint16_t position_starts = 416;     // This is the position of the starts in PG EEPROM memmory
       uint16_t mem_pos = 1024;            // This is the position of the starts in PG EEPROM memmory
       uint16_t position_percentage = 144; // This is the position of the irrig % in PG EEPROM memmory
+      uint8_t position_week = 0x80;       //This is for the week day starts
 
       if (manual_program.charAt(0) == 'B')
       {
         position_starts = 428;
         mem_pos = 1152;
         position_percentage = 146;
+        position_week = 0x81;
       }
       else if (manual_program.charAt(0) == 'C')
       {
         position_starts = 440;
         mem_pos = 1280;
         position_percentage = 148;
+        position_week = 0x82;
       }
       else if (manual_program.charAt(0) == 'D')
       {
         position_starts = 452;
         mem_pos = 1408;
         position_percentage = 150;
+        position_week = 0x83;
       }
       else if (manual_program.charAt(0) == 'E')
       {
         position_starts = 464;
         mem_pos = 1536;
         position_percentage = 152;
+        position_week = 0x84;
       }
       else if (manual_program.charAt(0) == 'F')
       {
         position_starts = 476;
         mem_pos = 1664;
         position_percentage = 154;
+        position_week = 0x85;
       }
       if (starts.success())
       {
@@ -555,6 +559,16 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           position_starts += 2;
           delay(800);
         }
+        //WEEK STARTS:
+        JsonArray &week_day = parsed["week_day"];
+        String day = "";
+        for (uint8_t items = 0; items < week_day.size(); items++)
+          day += week_day[items].as<String>();
+        char days[day.length() + 1];
+        day.toCharArray(days, sizeof(days));
+        uint8_t position_week = 0x81;
+        change_week_pg(days, sizeof(days), position_week);
+        delay(500);
       }
       JsonArray &valves = parsed["valves"];
       if (valves.success())
@@ -615,9 +629,9 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     {
       json_query(String(identifier).c_str(), "AUTO");
     }
-    else if (sTopic.indexOf("query") != -1)
+    else if (sTopic.indexOf("general") != -1)
     {
-      json_query(String(identifier).c_str(), "AUTO");
+      // json_query(String(identifier).c_str(), "AUTO");
     }
   }
 }
@@ -1270,4 +1284,52 @@ void json_query(const char id[], char status[])
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/query").c_str(), (const uint8_t *)json, strlen(json), false);
   // root.prettyPrintTo(Serial);
+}
+void change_week_pg(char *date, uint8_t lenght, uint8_t program)
+{
+  uint8_t value_to_memory = 0;
+  for (uint8_t index = 0; index < lenght; index++)
+    switch (*(date + index))
+    {
+    case '1':
+      value_to_memory += 1;
+      break;
+    case '2':
+      value_to_memory += 2;
+      break;
+    case '3':
+      value_to_memory += 4;
+      break;
+    case '4':
+      value_to_memory += 8;
+      break;
+    case '5':
+      value_to_memory += 16;
+      break;
+    case '6':
+      value_to_memory += 32;
+      break;
+    case '7':
+      value_to_memory += 64;
+      break;
+    default:
+      break;
+    }
+
+  String str_pos_week = String(program, HEX); //Obtein the position of the program memmory
+  str_pos_week.toUpperCase();
+  String str_days = String(value_to_memory, HEX); //The value to write in PG
+  str_days.toUpperCase();
+  //If is less than 0x0F I add a 0
+  if (str_days.length() != 2)
+    str_days = '0' + str_days;
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = str_pos_week.charAt(0);
+  cmd_write_data[15] = str_pos_week.charAt(1);
+  cmd_write_data[17] = str_days.charAt(0);
+  cmd_write_data[18] = str_days.charAt(1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
 }

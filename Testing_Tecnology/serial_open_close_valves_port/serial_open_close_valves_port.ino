@@ -167,19 +167,19 @@ void loop()
       change_time_pg("16", "01", "02", "03", "04"); //year/month/day/hour/min
       //First element the position in memmory and the second %
     }
-    if (a == 104)
+    if (a == 104) //press H
     {
-      char days[] = "1357";
-      String str_percen = String( manipulate(days, sizeof(days), HEX);
-      str_percen.toUpperCase();
-      //If is less than 0x0F I add a 0
-      if (str_percen.length() != 2)
-        str_percen = '0' + str_percen;
-      cmd_write_data[13] = '0';
-      cmd_write_data[14] = str_percen.charAt(0);
-      cmd_write_data[15] = str_percen.charAt(1);
-      cmd_write_data[17] = '0'; //str_percen.charAt(0);
-      cmd_write_data[18] = '1';
+      String day = "71";
+      char days[day.length()+1];
+      day.toCharArray(days, sizeof(days));
+      uint8_t position_week = 0x81;
+      for (int i = 0; i < sizeof(days); i++)
+      {
+        Serial.write(days[i]);
+      }
+      Serial.println(" ");
+      // change_week_pg(days, sizeof(days), &program);
+      change_week_pg(days, sizeof(days), position_week);
       //Then I calculate the position, the first one is 0x90
     }
   }
@@ -427,11 +427,13 @@ void change_time_pg(const char *year, const char *month, const char *day, const 
   delay(2000);
   Serial.println(" ");
 }
-uint8_t change_week_pg(char *date, uint8_t lenght)
+void change_week_pg(char *date, uint8_t lenght, uint8_t program)
 {
   uint8_t value_to_memory = 0;
   for (uint8_t index = 0; index < lenght; index++)
   {
+    Serial.write(*(date + index));
+    Serial.println("");
     switch (*(date + index))
     {
     case '1':
@@ -458,6 +460,28 @@ uint8_t change_week_pg(char *date, uint8_t lenght)
     default:
       break;
     }
+    Serial.print("_____");
+    Serial.println(value_to_memory);
   }
-  return value_to_memory;
+
+  String str_pos_week = String(program, HEX);
+  str_pos_week.toUpperCase();
+
+  String str_days = String(value_to_memory, HEX);
+  str_days.toUpperCase();
+
+  Serial.println(str_days);
+
+  //If is less than 0x0F I add a 0
+  if (str_days.length() != 2)
+    str_days = '0' + str_days;
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = str_pos_week.charAt(0);
+  cmd_write_data[15] = str_pos_week.charAt(1);
+  cmd_write_data[17] = str_days.charAt(0);
+  cmd_write_data[18] = str_days.charAt(1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  // softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
 }
