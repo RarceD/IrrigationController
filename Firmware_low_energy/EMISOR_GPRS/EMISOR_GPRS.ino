@@ -202,7 +202,7 @@ void setup()
   connectMqtt();
   delay(500);
   millix = millis();
-  json_connect_app();
+  // json_connect_app();
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -467,46 +467,46 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       uint16_t position_starts = 416;     // This is the position of the starts in PG EEPROM memmory
       uint16_t mem_pos = 1024;            // This is the position of the starts in PG EEPROM memmory
       uint16_t position_percentage = 144; // This is the position of the irrig % in PG EEPROM memmory
-      uint8_t position_week = 0x80;       //This is for the week day starts
+      uint8_t position_week = 0xB0;       //This is for the week day starts
 
       if (manual_program.charAt(0) == 'B')
       {
         position_starts = 428;
         mem_pos = 1152;
         position_percentage = 146;
-        position_week = 0x81;
+        position_week = 0xB1;
       }
       else if (manual_program.charAt(0) == 'C')
       {
         position_starts = 440;
         mem_pos = 1280;
         position_percentage = 148;
-        position_week = 0x82;
+        position_week = 0xB2;
       }
       else if (manual_program.charAt(0) == 'D')
       {
         position_starts = 452;
         mem_pos = 1408;
         position_percentage = 150;
-        position_week = 0x83;
+        position_week = 0xB3;
       }
       else if (manual_program.charAt(0) == 'E')
       {
         position_starts = 464;
         mem_pos = 1536;
         position_percentage = 152;
-        position_week = 0x84;
+        position_week = 0xB4;
       }
       else if (manual_program.charAt(0) == 'F')
       {
         position_starts = 476;
         mem_pos = 1664;
         position_percentage = 154;
-        position_week = 0x85;
+        position_week = 0xB5;
       }
       if (starts.success())
       {
-        LOG("Exists Starts");
+        //First parse all the existed starts:
         String str_time;
         uint8_t time_prog[6][2];
         for (uint8_t index_starts = 0; index_starts < starts.size(); index_starts++)
@@ -541,7 +541,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           cmd_write_data[18] = mem_time_start_hours.charAt(1);
           calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
           softSerial.write(cmd_write_data, sizeof(cmd_write_data));
-          delay(800);
+          delay(1000);
           start_time_min = time_to_pg_format(0, time_prog[index_complet][1]);
           String mem_time_start_min = String(start_time_min, HEX);
           mem_time_start_min.toUpperCase();
@@ -557,18 +557,48 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
           softSerial.write(cmd_write_data, sizeof(cmd_write_data));
           position_starts += 2;
-          delay(800);
+          delay(1000);
+        }
+        delay(1000);
+
+        //Clear all the starts that are not defined and could be saved in pg memmory:
+        uint8_t start_to_clear = 6 - starts.size();
+        uint16_t position_end = position_starts + 10; // try to write in 0x1AA and then in 0x1A8
+        while (start_to_clear > 0)
+        {
+          for (uint8_t times = 0; times <= 1; times++)
+          {
+            //First clear from the bottom to the top of the memmory:
+            delay(1000);
+            mem_starts_h = String(position_end + times, HEX);
+            mem_starts_h.toUpperCase();
+            cmd_write_data[13] = mem_starts_h.charAt(0);
+            cmd_write_data[14] = mem_starts_h.charAt(1);
+            cmd_write_data[15] = mem_starts_h.charAt(2);
+            cmd_write_data[17] = 'F';
+            cmd_write_data[18] = 'F';
+            calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+            softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+            for (int i = 0; i < sizeof(cmd_write_data); i++)
+              Serial.write(cmd_write_data[i]);
+            Serial.println(" ");
+            delay(1000);
+          }
+          start_to_clear--;
+          position_end -= 2;
         }
         //WEEK STARTS:
         JsonArray &week_day = parsed["week_day"];
-        String day = "";
-        for (uint8_t items = 0; items < week_day.size(); items++)
-          day += week_day[items].as<String>();
-        char days[day.length() + 1];
-        day.toCharArray(days, sizeof(days));
-        uint8_t position_week = 0x81;
-        change_week_pg(days, sizeof(days), position_week);
-        delay(500);
+        if (week_day.success())
+        {
+          String day = "";
+          for (uint8_t items = 0; items < week_day.size(); items++)
+            day += week_day[items].as<String>();
+          char days[day.length() + 1];
+          day.toCharArray(days, sizeof(days));
+          change_week_pg(days, sizeof(days), position_week);
+          delay(800);
+        }
       }
       JsonArray &valves = parsed["valves"];
       if (valves.success())

@@ -10,7 +10,7 @@ static uint8_t cmd_start_manprg[] = {0x02, 0xfe, 'S', 'T', 'A', 'R', 'T', ' ', '
 static uint8_t cmd_start_manvalv[] = {0x02, 0xfe, 'S', 'T', 'A', 'R', 'T', ' ', 'M', 'A', 'N', 'V', 'A', 'L', 'V', 0x23, '0', '1', 0x23, '0', '0', '0', '1', 0x23, 0x03, 0, 0};
 static uint8_t cmd_stop_manvalv[] = {0x02, 0xfe, 'S', 'T', 'O', 'P', ' ', 'M', 'A', 'N', 'V', 'A', 'L', 'V', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', 'B', '0', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '1', 'A', 'C', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 
@@ -162,25 +162,45 @@ void loop()
       //write_percentage_pg(152, 33);//PROG E
       //write_percentage_pg(154, 33);//PROG F
     }
-    if (a == 103) // PRess G to change time of PG
-    {
+    if (a == 103)                                   // PRess G to change time of PG
       change_time_pg("16", "01", "02", "03", "04"); //year/month/day/hour/min
-      //First element the position in memmory and the second %
-    }
-    if (a == 104) //press H
+    if (a == 104)                                   //press H
     {
       String day = "71";
-      char days[day.length()+1];
+      char days[day.length() + 1];
       day.toCharArray(days, sizeof(days));
       uint8_t position_week = 0x81;
-      for (int i = 0; i < sizeof(days); i++)
-      {
-        Serial.write(days[i]);
-      }
-      Serial.println(" ");
-      // change_week_pg(days, sizeof(days), &program);
       change_week_pg(days, sizeof(days), position_week);
-      //Then I calculate the position, the first one is 0x90
+    }
+    if (a == 105) // press 'i' to clear starts
+    {
+
+      uint8_t start_to_clear = 6 - 0;
+      String mem_starts_h;
+      uint16_t position_start = 0x1B8;
+      uint16_t position_end = position_start + 10; // try to write in 0x1AA and then in 0x1A8
+      while (start_to_clear > 0)
+      {
+        for (uint8_t times = 0; times <= 1; times++)
+        {
+          //First clear from the bottom to the top of the memmory:
+          mem_starts_h = String(position_end + times, HEX);
+          mem_starts_h.toUpperCase();
+          cmd_write_data[13] = mem_starts_h.charAt(0);
+          cmd_write_data[14] = mem_starts_h.charAt(1);
+          cmd_write_data[15] = mem_starts_h.charAt(2);
+          cmd_write_data[17] = 'F';
+          cmd_write_data[18] = 'F';
+          calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+          softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+          for (int i = 0; i < sizeof(cmd_write_data); i++)
+            Serial.write(cmd_write_data[i]);
+          Serial.println(" ");
+          delay(800);
+        }
+        start_to_clear--;
+        position_end -= 2;
+      }
     }
   }
 
