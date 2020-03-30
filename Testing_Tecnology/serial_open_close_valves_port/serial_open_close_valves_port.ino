@@ -10,7 +10,7 @@ static uint8_t cmd_start_manprg[] = {0x02, 0xfe, 'S', 'T', 'A', 'R', 'T', ' ', '
 static uint8_t cmd_start_manvalv[] = {0x02, 0xfe, 'S', 'T', 'A', 'R', 'T', ' ', 'M', 'A', 'N', 'V', 'A', 'L', 'V', 0x23, '0', '1', 0x23, '0', '0', '0', '1', 0x23, 0x03, 0, 0};
 static uint8_t cmd_stop_manvalv[] = {0x02, 0xfe, 'S', 'T', 'O', 'P', ' ', 'M', 'A', 'N', 'V', 'A', 'L', 'V', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '4', '0', '0', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', 'B', '0', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 
@@ -162,10 +162,25 @@ void loop()
       //write_percentage_pg(152, 33);//PROG E
       //write_percentage_pg(154, 33);//PROG F
     }
-    if (a == 103)
+    if (a == 103) // PRess G to change time of PG
     {
-
+      change_time_pg("16", "01", "02", "03", "04"); //year/month/day/hour/min
       //First element the position in memmory and the second %
+    }
+    if (a == 104)
+    {
+      char days[] = "1357";
+      String str_percen = String( manipulate(days, sizeof(days), HEX);
+      str_percen.toUpperCase();
+      //If is less than 0x0F I add a 0
+      if (str_percen.length() != 2)
+        str_percen = '0' + str_percen;
+      cmd_write_data[13] = '0';
+      cmd_write_data[14] = str_percen.charAt(0);
+      cmd_write_data[15] = str_percen.charAt(1);
+      cmd_write_data[17] = '0'; //str_percen.charAt(0);
+      cmd_write_data[18] = '1';
+      //Then I calculate the position, the first one is 0x90
     }
   }
 
@@ -353,4 +368,96 @@ void write_percentage_pg(uint16_t position, uint16_t percentage)
     Serial.write(cmd_write_data[i]);
   delay(800);
   Serial.println(" ");
+}
+void change_time_pg(const char *year, const char *month, const char *day, const char *hours, const char *minutes) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
+{
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = '4';
+  cmd_write_data[15] = '0';
+  cmd_write_data[17] = *year;
+  cmd_write_data[18] = *(year + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = '4';
+  cmd_write_data[15] = '1';
+  cmd_write_data[17] = *month;
+  cmd_write_data[18] = *(month + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = '4';
+  cmd_write_data[15] = '2';
+  cmd_write_data[17] = *day;
+  cmd_write_data[18] = *(day + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = '4';
+  cmd_write_data[15] = '4';
+  cmd_write_data[17] = *hours;
+  cmd_write_data[18] = *(hours + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = '4';
+  cmd_write_data[15] = '5';
+  cmd_write_data[17] = *minutes;
+  cmd_write_data[18] = *(minutes + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+}
+uint8_t change_week_pg(char *date, uint8_t lenght)
+{
+  uint8_t value_to_memory = 0;
+  for (uint8_t index = 0; index < lenght; index++)
+  {
+    switch (*(date + index))
+    {
+    case '1':
+      value_to_memory += 1;
+      break;
+    case '2':
+      value_to_memory += 2;
+      break;
+    case '3':
+      value_to_memory += 4;
+      break;
+    case '4':
+      value_to_memory += 8;
+      break;
+    case '5':
+      value_to_memory += 16;
+      break;
+    case '6':
+      value_to_memory += 32;
+      break;
+    case '7':
+      value_to_memory += 64;
+      break;
+    default:
+      break;
+    }
+  }
+  return value_to_memory;
 }
