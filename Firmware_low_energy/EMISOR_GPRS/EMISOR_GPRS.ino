@@ -248,7 +248,7 @@ void loop()
   {
     if (!pressed_times)
     {
-      // getAllFromPG(); // Have no idea why i can't do both at the same time
+      //getAllFromPG(); // Have no idea why i can't do both at the same time
       pressed_times = true;
     }
     else
@@ -260,6 +260,8 @@ void loop()
       for (int i = 0; i < 6; i++)
       {
         json_clear_starts(i);
+        delay(500);
+        json_week_days(i, prog[i].wateringDay);
         delay(500);
         json_program_starts(i);
         delay(500);
@@ -1362,4 +1364,26 @@ void change_week_pg(char *date, uint8_t lenght, uint8_t program)
   softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
   for (i = 0; i < sizeof(cmd_write_data); i++)
     Serial.write(cmd_write_data[i]);
+}
+void json_week_days(uint8_t program, uint8_t week_day)
+{
+  char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+  String str_week_day;
+  uint8_t compare_operation = 1;
+  for (int i = 1; i <= 7; i++)
+  {
+    if (week_day & compare_operation)
+    {
+      str_week_day += String(i);
+      str_week_day += ",";
+    }
+    compare_operation *= 2;
+  }
+  str_week_day.remove(str_week_day.length() - 1, 1);
+  DynamicJsonBuffer jsonBuffer(200);
+  JsonObject &root = jsonBuffer.createObject();
+  root["prog"] = String(program_letters[program]);
+  root["week_day"] = "[" + str_week_day + "]";
+  char json[300];
+  root.prettyPrintTo(Serial);
 }

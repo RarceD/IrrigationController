@@ -52,18 +52,20 @@ void loop()
   if (Serial.available())
   {
     int a = Serial.read();
-    if (a == 97)
+    if (a == 97) //Pulse: a
       json_program(0);
-    if (a == 98)
+    if (a == 98) //Pulse: b
       json_clear_starts(0);
-    if (a == 99)
+    if (a == 99) //Pulse: c
       json_program_valves(0);
-    if (a == 100)
+    if (a == 100) //Pulse: d
       json_connect_app();
-    if (a == 101)
+    if (a == 101) //Pulse: e
     {
       json_query("1233", "AUTO");
     }
+    if (a == 102) //Pulse f
+      json_week_days(4, prog[4].wateringDay);
   }
 }
 void json_program(uint8_t program)
@@ -113,6 +115,9 @@ void json_program(uint8_t program)
       irrig["time"] = time_h_json + ":" + time_m_json;
       valves.add(irrig);
     }
+
+  JsonArray &week_day = root.createNestedArray("week_day");
+
   Serial.println();
   root.prettyPrintTo(Serial);
 }
@@ -122,7 +127,7 @@ void json_clear_starts(uint8_t program)
 
   DynamicJsonBuffer jsonBuffer(200);
   JsonObject &root = jsonBuffer.createObject();
-  root["program"] = String(program_letters[program]);
+  root["prog"] = String(program_letters[program]);
   root["starts"] = "[]";
   Serial.println();
   root.prettyPrintTo(Serial);
@@ -221,6 +226,27 @@ void json_query(char id[], char status[])
   oasis["bat"] = 78;
   root["connection"] = 68;
   JsonArray &active = root.createNestedArray("prog_active");
+  char json[300];
+  root.prettyPrintTo(Serial);
+}
+void json_week_days(uint8_t program, uint8_t week_day)
+{
+  char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+  String str_week_day;
+  uint8_t compare_operation = 1;
+  for (int i = 1; i <= 7; i++)
+  {
+    if (week_day & compare_operation){
+      str_week_day += String(i);
+      str_week_day += ",";
+    }
+    compare_operation *= 2;
+  }
+  str_week_day.remove(str_week_day.length()-1,1);
+  DynamicJsonBuffer jsonBuffer(200);
+  JsonObject &root = jsonBuffer.createObject();
+  root["prog"] = String(program_letters[program]);
+  root["week_day"] = "[" + str_week_day + "]";
   char json[300];
   root.prettyPrintTo(Serial);
 }

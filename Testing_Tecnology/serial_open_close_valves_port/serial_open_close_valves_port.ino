@@ -18,12 +18,26 @@ uint16_t i, j;
 int calcrc(char ptr[], int length);
 void open_valve_pg(bool state, uint8_t valve, uint8_t time_hours, uint8_t time_minutes);
 void action_prog_pg(bool state, char program);
-
+typedef struct
+{
+  uint8_t interval;
+  uint8_t startDay;
+  uint8_t wateringDay;
+  uint16_t waterPercent;
+  uint8_t start[6][2];
+  uint16_t irrigTime[128];
+} program;
+SPIFlash flash(CS_M);
+program prog[TOTAL_PROG];
 /******************************************************************* setup section ************************************************************************************/
 void setup()
 {
 
   Serial.begin(115200);
+  flash.powerUp();
+  flash.begin();
+  // flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
+  flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   softSerial.begin(9600);
   calcrc((char *)cmd_read_line, sizeof(cmd_read_line) - 2);
   softSerial.write(cmd_read_line, sizeof(cmd_read_line));
@@ -201,6 +215,9 @@ void loop()
         start_to_clear--;
         position_end -= 2;
       }
+    }
+    if (a == 106)
+    {
     }
   }
 
