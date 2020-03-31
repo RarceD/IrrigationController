@@ -338,7 +338,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   // Then I identify the topic related with
   if (identifier > 1)
   {
-    if (sTopic.indexOf("manvalve") != -1)
+    if (sTopic.indexOf("manvalve") != -1) //done
     {
       send_web("/manvalve", sizeof("/manvalve"), identifier);
       delay(1000);
@@ -383,7 +383,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       }
       //I send via radio to the receiver
     }
-    else if (sTopic.indexOf("manprog") != -1)
+    else if (sTopic.indexOf("manprog") != -1) //done
     {
       //I obtein the values of the parser info:
       uint8_t activate = parsed["action"];
@@ -395,7 +395,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       delay(500);
       action_prog_pg(activate, manual_program.charAt(0)); //I send the command tom PG
     }
-    else if (sTopic.indexOf("oasis") != -1)
+    else if (sTopic.indexOf("oasis") != -1) //done
     {
       Serial.println("Publish in /oasis/app");
       JsonArray &oasis = parsed["oasis"];
@@ -418,59 +418,58 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       }
       send_web("/oasis", sizeof("/oasis"), identifier);
     }
-    else if (sTopic.indexOf("program") != -1)
+    else if (sTopic.indexOf("program") != -1) //fail valves time
     {
       //I parse the letter of the program
       send_web("/program", sizeof("/program"), identifier);
       String manual_program = parsed["prog"].as<String>();
-      //I parse the array of starts and valves, if there's any
-      JsonArray &starts = parsed["starts"];
       //I determin the positions of the PG in which I have to write
       uint16_t position_starts = 416;     // This is the position of the starts in PG EEPROM memmory
       uint16_t mem_pos = 1024;            // This is the position of the starts in PG EEPROM memmory
       uint16_t position_percentage = 144; // This is the position of the irrig % in PG EEPROM memmory
       uint8_t position_week = 0xB0;       //This is for the week day starts
-
-      if (manual_program.charAt(0) == 'B')
+      switch (manual_program.charAt(0))
       {
+      case 'B':
         position_starts = 428;
         mem_pos = 1152;
         position_percentage = 146;
         position_week = 0xB1;
-      }
-      else if (manual_program.charAt(0) == 'C')
-      {
+        break;
+      case 'C':
         position_starts = 440;
         mem_pos = 1280;
         position_percentage = 148;
         position_week = 0xB2;
-      }
-      else if (manual_program.charAt(0) == 'D')
-      {
+        break;
+      case 'D':
         position_starts = 452;
         mem_pos = 1408;
         position_percentage = 150;
         position_week = 0xB3;
-      }
-      else if (manual_program.charAt(0) == 'E')
-      {
+        break;
+      case 'E':
         position_starts = 464;
         mem_pos = 1536;
         position_percentage = 152;
         position_week = 0xB4;
-      }
-      else if (manual_program.charAt(0) == 'F')
-      {
+      case 'F':
         position_starts = 476;
         mem_pos = 1664;
         position_percentage = 154;
         position_week = 0xB5;
+      default:
+        break;
       }
+      //I parse the array of starts and valves, if there's any
+      JsonArray &starts = parsed["starts"];
       if (starts.success())
       {
         //First parse all the existed starts:
-        String str_time;
+        String str_time; //For writting in the memmory
         uint8_t time_prog[6][2];
+        uint16_t start_time_hours = 0, start_time_min = 0;
+        String mem_starts_h;
         for (uint8_t index_starts = 0; index_starts < starts.size(); index_starts++)
         {
           str_time = starts[index_starts].as<String>();
@@ -482,56 +481,39 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           LOG(time_prog[index_starts][0]);
           LOG(":");
           LOGLN(time_prog[index_starts][1]);
-        }
-        uint16_t start_time_hours = 0, start_time_min = 0;
-        String mem_starts_h;
-        for (int index_complet = 0; index_complet < starts.size(); index_complet++)
-        {
-          //First format the info y PG language
-          start_time_hours = time_to_pg_format(0, time_prog[index_complet][0]);
-          String mem_time_start_hours = String(start_time_hours, HEX);
-          mem_time_start_hours.toUpperCase();
-          if (mem_time_start_hours.length() != 2)
-            mem_time_start_hours = '0' + mem_time_start_hours;
-          mem_starts_h = String(position_starts + 0, HEX);
-          mem_starts_h.toUpperCase();
-          //Not that is compleatly in HEX I copy in the data buffer
-          cmd_write_data[13] = mem_starts_h.charAt(0);
-          cmd_write_data[14] = mem_starts_h.charAt(1);
-          cmd_write_data[15] = mem_starts_h.charAt(2);
-          cmd_write_data[17] = mem_time_start_hours.charAt(0);
-          cmd_write_data[18] = mem_time_start_hours.charAt(1);
-          calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-          softSerial.write(cmd_write_data, sizeof(cmd_write_data));
-          delay(1000);
-          start_time_min = time_to_pg_format(0, time_prog[index_complet][1]);
-          String mem_time_start_min = String(start_time_min, HEX);
-          mem_time_start_min.toUpperCase();
-          if (mem_time_start_min.length() != 2)
-            mem_time_start_min = '0' + mem_time_start_min;
-          String mem_starts_m = String(position_starts + 1, HEX);
-          mem_starts_m.toUpperCase();
-          cmd_write_data[13] = mem_starts_m.charAt(0);
-          cmd_write_data[14] = mem_starts_m.charAt(1);
-          cmd_write_data[15] = mem_starts_m.charAt(2);
-          cmd_write_data[17] = mem_time_start_min.charAt(0);
-          cmd_write_data[18] = mem_time_start_min.charAt(1);
-          calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-          softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+          delay(800);
+          for (uint8_t times_2 = 0; times_2 < 2; times_2++)
+          {
+            //First format the info y PG language
+            start_time_hours = time_to_pg_format(0, time_prog[index_starts][times_2]);
+            String mem_time_start_hours = String(start_time_hours, HEX);
+            mem_time_start_hours.toUpperCase();
+            if (mem_time_start_hours.length() != 2)
+              mem_time_start_hours = '0' + mem_time_start_hours;
+            mem_starts_h = String(position_starts + times_2, HEX);
+            mem_starts_h.toUpperCase();
+            //Not that is compleatly in HEX I copy in the data buffer
+            cmd_write_data[13] = mem_starts_h.charAt(0);
+            cmd_write_data[14] = mem_starts_h.charAt(1);
+            cmd_write_data[15] = mem_starts_h.charAt(2);
+            cmd_write_data[17] = mem_time_start_hours.charAt(0);
+            cmd_write_data[18] = mem_time_start_hours.charAt(1);
+            calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+            softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+            delay(800);
+          }
           position_starts += 2;
-          delay(1000);
         }
-        delay(1000);
-
         //Clear all the starts that are not defined and could be saved in pg memmory:
         uint8_t start_to_clear = 6 - starts.size();
-        uint16_t position_end = position_starts + 10; // try to write in 0x1AA and then in 0x1A8
+        uint16_t position_end = position_starts + 6; // try to write in 0x1AA and then in 0x1A8
         while (start_to_clear > 0)
         {
+          Serial.println("GILIPOLLAS");
           for (uint8_t times = 0; times <= 1; times++)
           {
             //First clear from the bottom to the top of the memmory:
-            delay(1000);
+            delay(800);
             mem_starts_h = String(position_end + times, HEX);
             mem_starts_h.toUpperCase();
             cmd_write_data[13] = mem_starts_h.charAt(0);
@@ -544,7 +526,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             for (int i = 0; i < sizeof(cmd_write_data); i++)
               Serial.write(cmd_write_data[i]);
             Serial.println(" ");
-            delay(1000);
+            delay(800);
           }
           start_to_clear--;
           position_end -= 2;
@@ -569,6 +551,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         uint8_t time_valves[128][2]; //This is a huge and ridiculous
         String irrig_time;           //The string for the 00:00 time format
         uint8_t number_valves;
+        uint16_t val = 0;
         for (uint8_t index_valves = 0; index_valves < valves.size(); index_valves++)
         {
           irrig_time = valves[index_valves]["time"].as<String>();
@@ -581,18 +564,18 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           LOG(time_valves[number_valves][0]);
           LOG(":");
           LOGLN(time_valves[number_valves][1]);
-        }
-        //Obtein the number of the valves and write the EEPROM memmory in correct positions
-        for (int index_compleat = 0; index_compleat < valves.size(); index_compleat++)
-        {
-          uint16_t val = time_to_pg_format(time_valves[index_compleat][0], time_valves[index_compleat][1]);
+          delay(100);
+          //Obtein the number of the valves and write the EEPROM memmory in correct positions
+          if (number_valves != index_valves)
+          {
+            //TODO: Clear all the valve times that are not fixed
+          }
+          val = time_to_pg_format(time_valves[number_valves][0], time_valves[number_valves][1]);
           String mem_time = String(val, HEX);
           if (mem_time.length() == 1)
             mem_time = '0' + mem_time;
           mem_time.toUpperCase();
           Serial.println(mem_time);
-          // Serial.println(mem_time.charAt(0));
-          number_valves = valves[index_compleat]["v"].as<uint8_t>() - 1;
           String mem_starts = String(mem_pos + number_valves, HEX);
           mem_starts.toUpperCase();
           cmd_write_data[13] = mem_starts.charAt(0);
@@ -603,10 +586,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
           softSerial.write(cmd_write_data, sizeof(cmd_write_data));
           for (i = 0; i < sizeof(cmd_write_data); i++)
-          {
             Serial.write(cmd_write_data[i]);
-            // Serial.print(" ");
-          }
           delay(1000);
           Serial.println(" ");
         }
@@ -617,11 +597,11 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         write_percentage_pg(position_percentage, irrig_percent);
       LOGLN(manual_program);
     }
-    else if (sTopic.indexOf("query") != -1)
+    else if (sTopic.indexOf("query") != -1) //done
     {
       json_query(String(identifier).c_str(), "AUTO");
     }
-    else if (sTopic.indexOf("general") != -1)
+    else if (sTopic.indexOf("general") != -1) //nothing to do here
     {
       send_web("/general", sizeof("/general"), identifier);
     }
@@ -1270,7 +1250,7 @@ void json_query(const char id[], char status[])
   JsonObject &oasis = battery.createNestedObject("oasis");
   oasis["id"] = 1;
   oasis["bat"] = 78;
-  root["connection"] =  map(modem.getSignalQuality(), 15, 35, 5, 100);
+  root["connection"] = map(modem.getSignalQuality(), 15, 35, 5, 100);
   JsonArray &active = root.createNestedArray("prog_active");
   char json[300];
   root.printTo(json);
