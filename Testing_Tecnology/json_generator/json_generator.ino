@@ -61,11 +61,10 @@ void loop()
     if (a == 100) //Pulse: d
       json_connect_app();
     if (a == 101) //Pulse: e
-    {
       json_query("1233", "AUTO");
-    }
     if (a == 102) //Pulse f
       json_week_days(4, prog[4].wateringDay);
+
   }
 }
 void json_program(uint8_t program)
@@ -236,13 +235,14 @@ void json_week_days(uint8_t program, uint8_t week_day)
   uint8_t compare_operation = 1;
   for (int i = 1; i <= 7; i++)
   {
-    if (week_day & compare_operation){
+    if (week_day & compare_operation)
+    {
       str_week_day += String(i);
       str_week_day += ",";
     }
     compare_operation *= 2;
   }
-  str_week_day.remove(str_week_day.length()-1,1);
+  str_week_day.remove(str_week_day.length() - 1, 1);
   DynamicJsonBuffer jsonBuffer(200);
   JsonObject &root = jsonBuffer.createObject();
   root["prog"] = String(program_letters[program]);

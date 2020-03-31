@@ -10,34 +10,25 @@ static uint8_t cmd_start_manprg[] = {0x02, 0xfe, 'S', 'T', 'A', 'R', 'T', ' ', '
 static uint8_t cmd_start_manvalv[] = {0x02, 0xfe, 'S', 'T', 'A', 'R', 'T', ' ', 'M', 'A', 'N', 'V', 'A', 'L', 'V', 0x23, '0', '1', 0x23, '0', '0', '0', '1', 0x23, 0x03, 0, 0};
 static uint8_t cmd_stop_manvalv[] = {0x02, 0xfe, 'S', 'T', 'O', 'P', ' ', 'M', 'A', 'N', 'V', 'A', 'L', 'V', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '1', 'A', 'C', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', '4', '0', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
 
 uint16_t i, j;
 int calcrc(char ptr[], int length);
 void open_valve_pg(bool state, uint8_t valve, uint8_t time_hours, uint8_t time_minutes);
 void action_prog_pg(bool state, char program);
-typedef struct
-{
-  uint8_t interval;
-  uint8_t startDay;
-  uint8_t wateringDay;
-  uint16_t waterPercent;
-  uint8_t start[6][2];
-  uint16_t irrigTime[128];
-} program;
-SPIFlash flash(CS_M);
-program prog[TOTAL_PROG];
+
 /******************************************************************* setup section ************************************************************************************/
 void setup()
 {
 
   Serial.begin(115200);
-  flash.powerUp();
-  flash.begin();
+  // flash.powerUp();
+  // flash.begin();
   // flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
-  flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
+  // flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   softSerial.begin(9600);
   calcrc((char *)cmd_read_line, sizeof(cmd_read_line) - 2);
   softSerial.write(cmd_read_line, sizeof(cmd_read_line));
@@ -176,9 +167,11 @@ void loop()
       //write_percentage_pg(152, 33);//PROG E
       //write_percentage_pg(154, 33);//PROG F
     }
-    if (a == 103)                                   // PRess G to change time of PG
-      change_time_pg("16", "01", "02", "03", "04"); //year/month/day/hour/min
-    if (a == 104)                                   //press H
+    if (a == 103)// PRess G to change time of PG
+    {
+      change_time_pg("16", "01","01", "02", "03", "04"); //year/month/week/day/hour/min
+    }                                                           
+    if (a == 104)                                               //press H
     {
       String day = "71";
       char days[day.length() + 1];
@@ -216,8 +209,10 @@ void loop()
         position_end -= 2;
       }
     }
-    if (a == 106)
+    if (a == 106) //press 'j'
     {
+      calcrc((char *)cmd_read_time, sizeof(cmd_read_time) - 2);
+      softSerial.write(cmd_read_time, sizeof(cmd_read_time));
     }
   }
 
@@ -406,7 +401,7 @@ void write_percentage_pg(uint16_t position, uint16_t percentage)
   delay(800);
   Serial.println(" ");
 }
-void change_time_pg(const char *year, const char *month, const char *day, const char *hours, const char *minutes) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
+void change_time_pg(const char *year, const char *month, const char *day, const char *week,const char *hours, const char *minutes) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
 {
   cmd_write_data[13] = '0';
   cmd_write_data[14] = '4';
@@ -419,8 +414,6 @@ void change_time_pg(const char *year, const char *month, const char *day, const 
     Serial.write(cmd_write_data[i]);
   delay(2000);
   Serial.println(" ");
-  cmd_write_data[13] = '0';
-  cmd_write_data[14] = '4';
   cmd_write_data[15] = '1';
   cmd_write_data[17] = *month;
   cmd_write_data[18] = *(month + 1);
@@ -430,8 +423,6 @@ void change_time_pg(const char *year, const char *month, const char *day, const 
     Serial.write(cmd_write_data[i]);
   delay(2000);
   Serial.println(" ");
-  cmd_write_data[13] = '0';
-  cmd_write_data[14] = '4';
   cmd_write_data[15] = '2';
   cmd_write_data[17] = *day;
   cmd_write_data[18] = *(day + 1);
@@ -439,10 +430,17 @@ void change_time_pg(const char *year, const char *month, const char *day, const 
   softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
   for (i = 0; i < sizeof(cmd_write_data); i++)
     Serial.write(cmd_write_data[i]);
+      delay(2000);
+  Serial.println(" ");
+  cmd_write_data[15] = '3';
+  cmd_write_data[17] = *week;
+  cmd_write_data[18] = *(week + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
   delay(2000);
   Serial.println(" ");
-  cmd_write_data[13] = '0';
-  cmd_write_data[14] = '4';
   cmd_write_data[15] = '4';
   cmd_write_data[17] = *hours;
   cmd_write_data[18] = *(hours + 1);
@@ -452,8 +450,6 @@ void change_time_pg(const char *year, const char *month, const char *day, const 
     Serial.write(cmd_write_data[i]);
   delay(2000);
   Serial.println(" ");
-  cmd_write_data[13] = '0';
-  cmd_write_data[14] = '4';
   cmd_write_data[15] = '5';
   cmd_write_data[17] = *minutes;
   cmd_write_data[18] = *(minutes + 1);

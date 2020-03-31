@@ -663,7 +663,12 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
     else if (sTopic.indexOf("general") != -1)
     {
-      // json_query(String(identifier).c_str(), "AUTO");
+      send_web("/general", sizeof("/general"), identifier);
+    }
+    else if (sTopic.indexOf("paring") != -1)
+    {
+      // TODO: SEND ALL THE PARING INFO WILL BE MANUALLY DONE:
+      send_web("/general", sizeof("/general"), identifier);
     }
   }
 }
@@ -1386,4 +1391,63 @@ void json_week_days(uint8_t program, uint8_t week_day)
   root["week_day"] = "[" + str_week_day + "]";
   char json[300];
   root.prettyPrintTo(Serial);
+}
+void change_time_pg(const char *year, const char *month, const char *day, const char *week, const char *hours, const char *minutes) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
+{
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = '4';
+  cmd_write_data[15] = '0';
+  cmd_write_data[17] = *year;
+  cmd_write_data[18] = *(year + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[15] = '1';
+  cmd_write_data[17] = *month;
+  cmd_write_data[18] = *(month + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[15] = '2';
+  cmd_write_data[17] = *day;
+  cmd_write_data[18] = *(day + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[15] = '3';
+  cmd_write_data[17] = *week;
+  cmd_write_data[18] = *(week + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[15] = '4';
+  cmd_write_data[17] = *hours;
+  cmd_write_data[18] = *(hours + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
+  cmd_write_data[15] = '5';
+  cmd_write_data[17] = *minutes;
+  cmd_write_data[18] = *(minutes + 1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
+  delay(2000);
+  Serial.println(" ");
 }
