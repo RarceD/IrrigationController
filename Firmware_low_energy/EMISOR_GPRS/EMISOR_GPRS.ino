@@ -4,13 +4,10 @@
 #include <PubSubClient.h>
 #include <SPIFlash.h>
 #include <SPI.h>
-// #include "LowPower.h"
-
 #include <ArduinoJson.h>
 #include <JamAtm-Vyrsa.h>
 #include <SimpleTimer.h>
 #include <SoftwareSerial.h>
-
 #include <JamSleep.h>
 
 #define CLIENT_ADDRESS 3
@@ -28,7 +25,6 @@
 #define TIME_RESPOSE 50000
 #define MAX_NUM_MESSAGES 15
 
-/******************************************************************* debug ********************************************************************************************/
 #define RF_RST 27
 #define INT_RF 2
 #define INT_RTC 14
@@ -86,19 +82,14 @@ typedef struct
 TinyGsm modem(Serial1);
 TinyGsmClient client(modem);
 PubSubClient mqttClient(client);
-
 RH_RF95 driver(CS_RF, INT_RF);
 RHReliableDatagram manager(driver, SERVER_ADDRESS);
-
-RV1805 rtc;
-Sleep lowPower;
-// SimpleTimer timerA, timerB, timerC, timerD, timerE, timerF, timerCheck;
-// radio_actions radio_waitting_msg;
 SPIFlash flash(CS_M);
 program prog[TOTAL_PROG];
 SoftwareSerial softSerial(PG_RXD, PG_TXD);
+RV1805 rtc;
+Sleep lowPower;
 
-char asignacion[4];                    // The 4 output of the oasis
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[50];
 bool rf_flag = false;
@@ -107,7 +98,6 @@ uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
 Jam jam;
 sysVar sys;
 msg_received_all ack;
-// Don't put this on the stack:
 
 String pg;
 int timer_A, timer_B, timer_C, timer_D, timer_E, timer_F;
@@ -118,15 +108,9 @@ volatile uint8_t oldPort = 0x00;
 volatile bool intButton = false, intRtc = false;
 uint8_t valveDef[MAX_CHILD], progDef[TOTAL_PROG];
 
-bool oasis_actions;
 uint32_t millix;
-// uint8_t index_prog_A, index_prog_B, index_prog_C, index_prog_D, index_prog_E, index_prog_F;
-// bool start_programA, start_programB, start_programC, start_programD, start_programE, start_programF;
-// bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
-
 bool ones_time;
 bool gprs_on = true, mode = false, comError[MAX_CHILD];
-
 uint32_t start = 0;
 uint8_t counter_syn, counter_time_sms;
 
@@ -157,10 +141,6 @@ void setup()
   char first_mem[] = "uuid_prueba_1_10";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
-
-  char ack[] = "##OK55##";
-  for (int i = 0; i < sizeof(ack); i++)
-    // sys.ack_msg[i] = ack[i];
   flash.eraseSector(SYS_VAR_ADDR);
   flash.writeAnything(SYS_VAR_ADDR, sys);
   */
@@ -175,40 +155,25 @@ void setup()
   rtc.set24Hour();
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
-  // rtc.setAlarmMode(0);
-  rtc.setAlarmMode(6);
-  rtc.setAlarm(10, 0, 0, 0, 0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
-  //rtc.setAlarm(0, 30, 0, 0, 0);
-  // rtc.setToCompilerTime();
   rtc.updateTime();
   Serial.println(rtc.stringTime());
   Serial.println(rtc.stringDate());
   jam.ledBlink(LED_SETUP, 1000);
-  // timer_check = timerCheck.setInterval(20000, check_time);
-  // radio_waitting_msg.num_message_flags = 0;
-  for (int i = 0; i < sizeof(data); i++)
-    data[i] = 'z';
-  //for (int msg = 0; msg < MAX_NUM_MESSAGES; msg++)
-  //{
-  //  radio_waitting_msg.request_MANUAL[msg] = false; // the max n
-  //  radio_waitting_msg.request_TIME[msg] = false;
-  //  radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
-  //  radio_waitting_msg.request_STOP_ALL[msg] = false;
-  //  radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
-  //}
   print_flash();
   connectSIM();
   connectMqtt();
   delay(500);
   millix = millis();
-  // json_connect_app();
+  // json_connect_app(); //for sendding to the web that everithing is ok
+  char assigned[] = {21, 34, 54, 67};
+  // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
+  // json_oasis_paring(false, 1, assigned); //Asigned all the valves
 }
 
 /******************************************************************* main program  ************************************************************************************/
 void loop()
 {
-
   mqttClient.loop();
   if (!mqttClient.connected())
   {
@@ -236,14 +201,11 @@ void loop()
     char json[100];
     DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
     JsonObject &root = jsonBuffer.createObject();
-    root.set("id", sys.devUuid);
     root.set("battery", bat);
-    root.set("success", "true");
     root.printTo(json);
-    mqttClient.publish(String("debug_vyr").c_str(), (const uint8_t *)json, strlen(json), false);
+    mqttClient.publish(String("uptime").c_str(), (const uint8_t *)json, strlen(json), false);
     millix = millis();
   }
-
   if (!digitalRead(PCINT_PIN)) //If pressed the button syn with the web
   {
     if (!pressed_times)
@@ -365,7 +327,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   char json[MAX_JSON_SIZE];
   String sTopic;
   DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
-  Serial.println(length);
+  // Serial.println(length);
   strcpy(json, (char *)payload); //one alternative is using c fucntion to convert
   JsonObject &parsed = jsonBuffer.parseObject(json);
   //DPRINT("Mqtt received: ");
@@ -386,7 +348,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       String valve_time;
       int valve_number[25], valve_action[25], valve_min[25], valve_hours[25];
       //Start the game:
-
       for (uint8_t index_oasis = 0; index_oasis < valves.size(); index_oasis++)
       {
         valve_number[index_oasis] = valves[index_oasis]["v"].as<int>();
@@ -424,7 +385,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
     else if (sTopic.indexOf("manprog") != -1)
     {
-      Serial.println("Publish in  /manprog/app");
       //I obtein the values of the parser info:
       uint8_t activate = parsed["action"];
       // Serial.println(activate);
@@ -590,17 +550,17 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           position_end -= 2;
         }
         //WEEK STARTS:
-        JsonArray &week_day = parsed["week_day"];
-        if (week_day.success())
-        {
-          String day = "";
-          for (uint8_t items = 0; items < week_day.size(); items++)
-            day += week_day[items].as<String>();
-          char days[day.length() + 1];
-          day.toCharArray(days, sizeof(days));
-          change_week_pg(days, sizeof(days), position_week);
-          delay(800);
-        }
+      }
+      JsonArray &week_day = parsed["week_day"];
+      if (week_day.success())
+      {
+        String day = "";
+        for (uint8_t items = 0; items < week_day.size(); items++)
+          day += week_day[items].as<String>();
+        char days[day.length() + 1];
+        day.toCharArray(days, sizeof(days));
+        change_week_pg(days, sizeof(days), position_week);
+        delay(800);
       }
       JsonArray &valves = parsed["valves"];
       if (valves.success())
@@ -663,11 +623,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
     else if (sTopic.indexOf("general") != -1)
     {
-      send_web("/general", sizeof("/general"), identifier);
-    }
-    else if (sTopic.indexOf("paring") != -1)
-    {
-      // TODO: SEND ALL THE PARING INFO WILL BE MANUALLY DONE:
       send_web("/general", sizeof("/general"), identifier);
     }
   }
@@ -1315,7 +1270,7 @@ void json_query(const char id[], char status[])
   JsonObject &oasis = battery.createNestedObject("oasis");
   oasis["id"] = 1;
   oasis["bat"] = 78;
-  root["connection"] = 68;
+  root["connection"] =  map(modem.getSignalQuality(), 15, 35, 5, 100);
   JsonArray &active = root.createNestedArray("prog_active");
   char json[300];
   root.printTo(json);
@@ -1389,8 +1344,10 @@ void json_week_days(uint8_t program, uint8_t week_day)
   JsonObject &root = jsonBuffer.createObject();
   root["prog"] = String(program_letters[program]);
   root["week_day"] = "[" + str_week_day + "]";
-  char json[300];
-  root.prettyPrintTo(Serial);
+  char json[200];
+  root.printTo(json);
+  mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
+  // root.prettyPrintTo(Serial);
 }
 void change_time_pg(const char *year, const char *month, const char *day, const char *week, const char *hours, const char *minutes) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
 {
@@ -1450,4 +1407,27 @@ void change_time_pg(const char *year, const char *month, const char *day, const 
     Serial.write(cmd_write_data[i]);
   delay(2000);
   Serial.println(" ");
+}
+void json_oasis_paring(bool pairing, uint8_t id_uuid, char *assigned)
+{
+  //First to the pairing topic with the uuid and the to oasis
+  //The uuid and the id are the same
+  DynamicJsonBuffer jsonBuffer(200);
+  JsonObject &root = jsonBuffer.createObject();
+  JsonObject &oasis = root.createNestedObject("oasis");
+  JsonObject &info = oasis.createNestedObject("");
+  info["id"] = id_uuid;
+  if (pairing)
+    info["uuid"] = id_uuid;
+  JsonArray &data = info.createNestedArray("assign");
+  uint8_t i = 0;
+  while (i < 4)
+    data.add(*(assigned + i++));
+  char json[200];
+  root.printTo(json);
+  if (pairing)
+    mqttClient.publish((String(sys.devUuid) + "/pairing").c_str(), (const uint8_t *)json, strlen(json), false);
+  else
+    mqttClient.publish((String(sys.devUuid) + "/oasis").c_str(), (const uint8_t *)json, strlen(json), false);
+  // root.prettyPrintTo(Serial);
 }

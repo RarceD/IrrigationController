@@ -47,6 +47,7 @@ void setup()
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
 }
 uint16_t pg_reag_to_web(uint16_t pg_time);
+char assignation[] = {8, 33, 6, 2};
 void loop()
 {
   if (Serial.available())
@@ -64,7 +65,10 @@ void loop()
       json_query("1233", "AUTO");
     if (a == 102) //Pulse f
       json_week_days(4, prog[4].wateringDay);
-
+    if (a == 103) //Pulse g
+      json_oasis_paring(true, 1, 1, assignation);
+    if (a == 104) //Pulse h
+      json_oasis_paring(false,1, assignation);
   }
 }
 void json_program(uint8_t program)
@@ -250,3 +254,55 @@ void json_week_days(uint8_t program, uint8_t week_day)
   char json[300];
   root.prettyPrintTo(Serial);
 }
+void json_oasis_paring(bool pairing, uint8_t id_uuid, char *assigned)
+{
+  //First to the pairing topic with the uuid and the to oasis
+  //The uuid and the id are the same
+  DynamicJsonBuffer jsonBuffer(500);
+  JsonObject &root = jsonBuffer.createObject();
+  JsonObject &oasis = root.createNestedObject("oasis");
+  JsonObject &info = oasis.createNestedObject("");
+  info["id"] = id_uuid;
+  if (pairing)
+    info["uuid"] = id_uuid;
+  JsonArray &data = info.createNestedArray("assign");
+  uint8_t i = 0;
+  while (i < 4)
+    data.add(*(assigned + i++));
+  root.prettyPrintTo(Serial);
+}
+
+/* PAIIIIIIRING first msg
+{
+  "oasis": {
+    " ": {
+      "id": 2,
+      "uuid": "uuid_random_2",
+      "assign": [
+        1, 
+        2,
+        3,
+        4
+      ]
+    }
+  }
+}
+*/
+
+/* OASIS second msg
+
+{
+  "oasis": {
+    " ": {
+      "id": 2,
+      "assign": [
+        11,
+        22,
+        33,
+        44
+      ]
+    }
+  }
+}
+
+*/
