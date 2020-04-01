@@ -2,10 +2,14 @@
 #define TINY_GSM_RX_BUFFER 1024
 #include <TinyGsmClient.h>
 #include <PubSubClient.h>
+#include <SPIFlash.h>
+#include <SPI.h>
 #include <ArduinoJson.h>
-#include <SoftwareSerial.h>
-
 #include <JamAtm-Vyrsa.h>
+#include <SimpleTimer.h>
+#include <SoftwareSerial.h>
+#include <JamSleep.h>
+#include <SimpleTimer.h>
 
 #define CLIENT_ADDRESS 3
 #define SERVER_ADDRESS 2
@@ -21,6 +25,7 @@
 #define UUID_LENGTH 16
 #define TIME_RESPOSE 50000
 #define MAX_NUM_MESSAGES 15
+#define FLASH_SYS_DIR 0x040400
 
 #define RF_RST 27
 #define INT_RF 2
@@ -40,15 +45,6 @@
 #define PCPIN *portInputRegister(digitalPinToPort(PCINT_PIN))
 /******************************************************************* declarations  ************************************************************************************/
 
-typedef enum
-{ // This enum contains the possible actions
-  REQUEST_MANVAL,
-  REQUEST_MANUAL,
-  REQUEST_TIME,
-  REQUEST_ASSIGNED_VALVES,
-  REQUEST_STOP_ALL,
-  REQUEST_FULL_MESSAGE
-} messages_radio;
 typedef struct
 {
   uint8_t id;
@@ -72,8 +68,37 @@ typedef struct
 } program;
 typedef struct
 {
+  bool timer_active;                        // When there is any timer active this flag is True
+  uint8_t index;                            // For movin into the arrays
+  uint8_t valve[MAX_MANUAL_TIMERS];         // Save the number of the valves
+  uint32_t millix[MAX_MANUAL_TIMERS];       // Save the millis time timers are just for manual close the valves
+  uint32_t time_to_stop[MAX_MANUAL_TIMERS]; // Save the millis time timers are just for manual close the valves
+} manual;
+typedef struct
+{                                        // This struct conteis the messages of radio that are going to be sent but the node is sleeping so it has to wait
+  bool request_MANUAL[MAX_NUM_MESSAGES]; // the max number of messages are 4
+  bool request_TIME[MAX_NUM_MESSAGES];
+  bool request_ASSIGNED_VALVES[MAX_NUM_MESSAGES];
+  bool request_STOP_ALL[MAX_NUM_MESSAGES];
+  bool request_FULL_MESSAGE[MAX_NUM_MESSAGES];
+  uint8_t num_message_flags;
+  uint8_t valve_info[3][MAX_NUM_MESSAGES];    //This info is for [num oasis,  tº hours , tºminutes]
+  uint8_t assigned_info[5][MAX_NUM_MESSAGES]; //This info is for assigned [num oasis, assig0, assig1, assig2, assig3]
+} radio_actions;
+typedef enum
+{ // This enum contains the possible actions
+  REQUEST_MANVAL,
+  REQUEST_MANUAL,
+  REQUEST_TIME,
+  REQUEST_ASSIGNED_VALVES,
+  REQUEST_STOP_ALL,
+  REQUEST_FULL_MESSAGE
+} messages_radio;
+typedef struct
+{
   bool id_node[5];
 } msg_received_all;
+
 TinyGsm modem(Serial1);
 TinyGsmClient client(modem);
 PubSubClient mqttClient(client);
@@ -84,10 +109,14 @@ program prog[TOTAL_PROG];
 SoftwareSerial softSerial(PG_RXD, PG_TXD);
 RV1805 rtc;
 Sleep lowPower;
+SimpleTimer timerA, timerB, timerC, timerD, timerE, timerF, timerCheck;
+int timer_A, timer_B, timer_C, timer_D, timer_E, timer_F, timer_check;
 
-Jam jam;
+Jam jam; // All the structs defined
 sysVar sys;
+manual man;
 msg_received_all ack;
+radio_actions radio_waitting_msg;
 
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[50];
@@ -101,8 +130,19 @@ volatile bool intRtc = false;
 uint8_t valveDef[MAX_CHILD], progDef[TOTAL_PROG];
 bool gprs_on = true, mode = false, comError[MAX_CHILD];
 
-uint32_t millix;
 bool ones_time;
+char asignacion[4]; // The 4 output of the oasis
+
+uint32_t millix, start;
+uint8_t index_prog_A, index_prog_B, index_prog_C, index_prog_D, index_prog_E, index_prog_F;
+bool start_programA, start_programB, start_programC, start_programD, start_programE, start_programF; //This is a shame
+bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
+
+bool oasis_actions;
+bool pg_interact_while_radio;
+bool auto_program_flag;
+uint8_t counter_syn;
+uint8_t rf_msg_tries;
 bool pressed_times;
 
 /******************************************************************* setup section ************************************************************************************/
@@ -149,6 +189,9 @@ void setup()
   // rtc.setToCompilerTime();
   Serial.println(rtc.stringTime());
   Serial.println(rtc.stringDate());
+  rtc.setAlarmMode(6);
+  rtc.setAlarm(55, 0, 0, 0, 0);
+  attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   jam.ledBlink(LED_SETUP, 1000);
   //Set PG in time:
   change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
@@ -158,6 +201,18 @@ void setup()
   connectMqtt();
   delay(500);
   millix = millis();
+  // timer_check = timerCheck.setInterval(20000, check_time);
+  radio_waitting_msg.num_message_flags = 0;
+  for (int i = 0; i < sizeof(data); i++)
+    data[i] = 'z';
+  for (int msg = 0; msg < MAX_NUM_MESSAGES; msg++)
+  {
+    radio_waitting_msg.request_MANUAL[msg] = false; // the max n
+    radio_waitting_msg.request_TIME[msg] = false;
+    radio_waitting_msg.request_ASSIGNED_VALVES[msg] = false;
+    radio_waitting_msg.request_STOP_ALL[msg] = false;
+    radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
+  }
   char assigned[] = {21, 34, 54, 67};
 
   //At re-starting the pg is going to read all the info and send it to the web
@@ -175,6 +230,9 @@ void setup()
 /******************************************************************* main program  ************************************************************************************/
 void loop()
 {
+  listen_nodo();
+  listening_pg();
+
   mqttClient.loop();
   if (!mqttClient.connected())
   {
@@ -238,6 +296,81 @@ void loop()
     //// json_program(1);
     //delay(500);
   }
+
+  if (intRtc) // I wake up at 58 seconds just for 10 seconds
+  {
+    intRtc = false;
+    rtc.updateTime();
+    Serial.println(rtc.stringTime());
+    oasis_actions = true;
+  }
+  if (oasis_actions) // When something
+  {
+    // Always the first message have to be sync
+    start = millis();
+    //I clear the flags of interaction and program auto running
+    auto_program_flag = false;
+    pg_interact_while_radio = false;
+    // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
+    rf_msg_tries++;
+    while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
+    {
+      if (millis() - start >= 400) // Every 400ms I send a message to the oasis hoping they will receive them
+      {
+        prepare_message(); // This function spends 400ms to compleat
+        counter_syn++;
+        manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS); //Send to the receivers
+        start = millis();
+      }
+      listening_pg();
+    }
+    /*
+    if (!pg_interact_while_radio) // If the user touch the fucking PG I do not clear the send flags and I send twice
+    {
+      jam.ledBlink(LED_SETUP, 1000); //A led ON to realize that I it es continously sendding and cleanning
+      pg_interact_while_radio = false;
+      for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
+      {
+        radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
+        radio_waitting_msg.request_TIME[x] = false;
+        radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
+        radio_waitting_msg.request_STOP_ALL[x] = false;
+        radio_waitting_msg.request_FULL_MESSAGE[x] = false;
+      }
+      radio_waitting_msg.num_message_flags = 0;
+      Serial.println("CLEAR MEMMORY FLAGS");
+    }
+    */
+    counter_syn = 0;
+    oasis_actions = false;
+  }
+  if (man.timer_active) // This timer start only when we have start a manual valve action and we have to stop
+  {
+    for (uint8_t index_manual = 0; index_manual < MAX_MANUAL_TIMERS; index_manual++)
+    {
+      // The first element is the time of the valve and the second element is
+      if (man.millix[index_manual] != 0 && millis() - man.millix[index_manual] >= man.time_to_stop[index_manual])
+      {
+        auto_program_flag = true; //Do not clean the buffer before sendding
+        Serial.print("APAGO LA VALVULA MANUAL: ");
+        Serial.println(man.valve[index_manual]);
+        //I set a flag, when the time of waking up starts all the messages
+        radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
+        radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = man.valve[index_manual];
+        radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
+        radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
+        //I clear all the info of this timer:
+        man.valve[index_manual] = 0;
+        man.millix[index_manual] = 0;
+        man.time_to_stop[index_manual] = 0;
+        //subtract an index and if the timers are 0 I set the flag to false and it does not check more
+        man.index--;
+        if (man.index < 1)
+          man.timer_active = false;
+      }
+    }
+  }
+
 }
 /*******************************************************************   functions     ************************************************************************************/
 void connectSIM()
@@ -416,7 +549,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           LOG(", ");
         }
         LOGLN("");
-        change_oasis_assigned(ide[oasis_num] , assigned_id);
+        change_oasis_assigned(ide[oasis_num], assigned_id);
       }
 
       send_web("/oasis", sizeof("/oasis"), identifier);
@@ -607,10 +740,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     {
       send_web("/general", sizeof("/general"), identifier);
     }
-        else if (sTopic.indexOf("stop") != -1) //nothing to do here
-    {
-      send_web("/stop", sizeof("/stop"), identifier);
-    }
   }
 }
 void send_web(char *topic, unsigned int length, int id)
@@ -630,25 +759,6 @@ void send_web(char *topic, unsigned int length, int id)
 void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
   intRtc = true; //set flag to indicate that rtc interrupt was triggered
-}
-void rtc_node(int hour, int minute, int second, int day, int month, uint16_t &order)
-{
-  uint8_t send_time[] = "##TIME:H:XX/M:XX/S:XX/D:XX/M:XX/";
-  send_time[7 + 2] = (hour / 10) + 0x30;
-  send_time[8 + 2] = (hour % 10) + 0x30;
-  send_time[12 + 2] = (minute / 10) + 0x30;
-  send_time[13 + 2] = (minute % 10) + 0x30;
-  send_time[17 + 2] = (second / 10) + 0x30;
-  send_time[18 + 2] = (second % 10) + 0x30;
-  send_time[22 + 2] = (day / 10) + 0x30;
-  send_time[23 + 2] = (day % 10) + 0x30;
-  send_time[27 + 2] = (month / 10) + 0x30;
-  send_time[28 + 2] = (month % 10) + 0x30;
-  for (int i = 0; i < sizeof(send_time); i++)
-    data[order++] = send_time[i];
-  //for (int i = 0; i < sizeof(send); i++)
-  //  Serial.write(send[i]);
-  //manager.sendtoWait(data, sizeof(send), CLIENT_ADDRESS);
 }
 void print_flash()
 {
@@ -1451,4 +1561,477 @@ void change_oasis_assigned(uint8_t oasis_number, uint8_t *assigned)
     delay(1000);
     Serial.println(" ");
   }
+}
+void prepare_message() // This function prepare the messages for been sent
+{
+  for (int i = 0; i < sizeof(data) / 2; i++)
+    data[i] = 'z';
+  uint16_t index = 0; // This index is just for moving into the array
+  data[index++] = '_';
+  if (rf_msg_tries < 2) // Only send time one time
+    send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+  for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++) //Introduce the messages in the data buffer
+    if (radio_waitting_msg.request_MANUAL[msg])
+      send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
+    else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
+    {
+      char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
+      send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
+    }
+    else if (radio_waitting_msg.request_STOP_ALL[msg])
+      send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
+  //This is for debugging
+  for (uint8_t data_index = 0; data_index < sizeof(data); data_index++)
+    Serial.write(data[data_index]);
+  Serial.println(" ");
+}
+void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
+{
+  //First write the destination of the message:
+  bool f_man_valve = false, f_time = false, f_asigned = false, f_stop = false, f_manual = false, f_full = false;
+  switch (msg)
+  {
+  case REQUEST_MANUAL:
+  {
+    f_manual = true;
+    // Serial.println("MANUAL OPEN");
+    uint8_t str_manual[] = "##MANVAL#000#00:00#00";
+    if (valve > 99)
+    {
+      str_manual[9] = '1';
+      str_manual[10] = ((valve - 100) / 10) + 0x30;
+      str_manual[11] = ((valve - 100) % 10) + 0x30;
+    }
+    else
+    {
+      str_manual[9] = '0';
+      str_manual[10] = (valve / 10) + 0x30;
+      str_manual[11] = (valve % 10) + 0x30;
+    }
+    str_manual[13] = (hour / 10) + 0x30;
+    str_manual[14] = (hour % 10) + 0x30;
+    str_manual[16] = (minutes / 10) + 0x30;
+    str_manual[17] = (minutes % 10) + 0x30;
+    str_manual[19] = uuid[0];
+    str_manual[20] = uuid[1];
+    for (int i = 0; i < sizeof(str_manual); i++)
+    {
+      data[order] = str_manual[i];
+      order++;
+    }
+    break;
+  }
+  case REQUEST_MANVAL:
+  {
+    f_man_valve = true;
+    // Serial.println("REQUEST MANVALVE");
+    uint8_t str_manval[] = "##MANVAL#000#00:00#00X";
+    if (valve > 99)
+    {
+      str_manval[9] = '1';
+      str_manval[10] = ((valve - 100) / 10) + 0x30;
+      str_manval[11] = ((valve - 100) % 10) + 0x30;
+    }
+    else
+    {
+      str_manval[9] = '0';
+      str_manval[10] = (valve / 10) + 0x30;
+      str_manval[11] = (valve % 10) + 0x30;
+    }
+
+    str_manval[13] = (hour / 10) + 0x30;
+    str_manval[14] = (hour % 10) + 0x30;
+    str_manval[16] = (minutes / 10) + 0x30;
+    str_manval[17] = (minutes % 10) + 0x30;
+    str_manval[19] = uuid[0];
+    str_manval[20] = uuid[1];
+
+    for (int i = 0; i < sizeof(str_manval); i++)
+    {
+      data[order] = str_manval[i];
+      order++;
+    }
+    f_man_valve = false;
+    break;
+  }
+  case REQUEST_TIME:
+  {
+
+    f_time = true;
+    // Serial.println("REQUEST TIME");
+    rtc.updateTime();
+    rtc_node((int)rtc.getHours(), (int)rtc.getMinutes(), (int)rtc.getSeconds(), (int)rtc.getDate(), (int)rtc.getMonth(), order);
+    f_time = false;
+    break;
+  }
+  case REQUEST_ASSIGNED_VALVES:
+  {
+    // Serial.println("CHANGE ASIGNATION VALVE");
+    f_asigned = true;
+    //VALVE es el ID que va del 1 al 250
+    uint8_t str_assigned[] = "##ASIGNED#000#000:000:000:000#00X";
+    if (valve > 99)
+    {
+      str_assigned[10] = '1';
+      str_assigned[11] = ((valve - 100) / 10) + 0x30;
+      str_assigned[12] = ((valve - 100) % 10) + 0x30;
+    }
+    else
+    {
+      str_assigned[10] = '0';
+      str_assigned[11] = (valve / 10) + 0x30;
+      str_assigned[12] = (valve % 10) + 0x30;
+    }
+    uint8_t index_assigned = 14;
+
+    for (uint8_t out = 0; out < 4; out++, index_assigned += 4)
+    {
+      if (assigned[out] > 99)
+      {
+        str_assigned[index_assigned] = '1';
+        str_assigned[index_assigned + 1] = ((assigned[out] - 100) / 10) + 0x30;
+        str_assigned[index_assigned + 2] = ((assigned[out] - 100) % 10) + 0x30;
+      }
+      else
+      {
+        str_assigned[index_assigned] = '0';
+        str_assigned[index_assigned + 1] = (assigned[out] / 10) + 0x30;
+        str_assigned[index_assigned + 2] = (assigned[out] % 10) + 0x30;
+      }
+    }
+    str_assigned[30] = uuid[0];
+    str_assigned[31] = uuid[1];
+
+    for (int j = 0; j < sizeof(str_assigned); j++)
+    {
+      data[order] = str_assigned[j];
+      Serial.write(data[order]);
+      order++;
+    }
+    f_asigned = false;
+    break;
+  }
+  case REQUEST_STOP_ALL:
+  {
+    // Serial.println("STOP ALL");
+    f_stop = true;
+    f_stop = false;
+    uint8_t str_stop[] = "##STOP#ALL#00X";
+    str_stop[11] = uuid[0];
+    str_stop[12] = uuid[1];
+    for (int j = 0; j < sizeof(str_stop); j++)
+    {
+      data[order] = str_stop[j];
+      order++;
+    }
+    break;
+  }
+  }
+  //manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS);
+}
+void rtc_node(int hour, int minute, int second, int day, int month, uint16_t &order)
+{
+  uint8_t send_time[] = "##TIME:H:XX/M:XX/S:XX/D:XX/M:XX/";
+  send_time[7 + 2] = (hour / 10) + 0x30;
+  send_time[8 + 2] = (hour % 10) + 0x30;
+  send_time[12 + 2] = (minute / 10) + 0x30;
+  send_time[13 + 2] = (minute % 10) + 0x30;
+  send_time[17 + 2] = (second / 10) + 0x30;
+  send_time[18 + 2] = (second % 10) + 0x30;
+  send_time[22 + 2] = (day / 10) + 0x30;
+  send_time[23 + 2] = (day % 10) + 0x30;
+  send_time[27 + 2] = (month / 10) + 0x30;
+  send_time[28 + 2] = (month % 10) + 0x30;
+  for (int i = 0; i < sizeof(send_time); i++)
+    data[order++] = send_time[i];
+  //for (int i = 0; i < sizeof(send); i++)
+  //  Serial.write(send[i]);
+  //manager.sendtoWait(data, sizeof(send), CLIENT_ADDRESS);
+}
+void listen_nodo() // if the oasis send something i listen
+{
+  if (manager.available()) // Detect radio activity and find id of the nodes
+  {
+    uint8_t len = sizeof(buf);
+    manager.recvfromAck(buf, &len);
+    switch (buf[5])
+    {
+    case '1':
+      // Serial.println("Node 1 OK");
+      ack.id_node[0] = true;
+      break;
+    case '2':
+      // Serial.println("Node 2 OK");
+      ack.id_node[1] = true;
+      break;
+    case '3':
+      // Serial.println("Node 3 OK");
+      ack.id_node[2] = true;
+      break;
+    case '4':
+      // Serial.println("Node 4 OK");
+      ack.id_node[3] = true;
+      break;
+    case '5':
+      // Serial.println("Node 5 OK");
+      ack.id_node[4] = true;
+      break;
+    default:
+      Serial.println("Everything is bad");
+      break;
+    }
+    for (uint8_t inde_X = 0; inde_X < 20; inde_X++)
+      Serial.write(buf[inde_X]);
+    Serial.println(" ");
+  }
+  if ((ack.id_node[0] && ack.id_node[1] && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  {
+    ack.id_node[0] = false;
+    ack.id_node[1] = false;
+
+    auto_program_flag = false;
+    pg_interact_while_radio = false;
+    rf_msg_tries = 0;
+
+    jam.ledBlink(LED_SETUP, 1000);                 //A led ON to realize that I it es continously sendding and cleanning
+    for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
+    {
+      radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
+      radio_waitting_msg.request_TIME[x] = false;
+      radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
+      radio_waitting_msg.request_STOP_ALL[x] = false;
+      radio_waitting_msg.request_FULL_MESSAGE[x] = false;
+    }
+    radio_waitting_msg.num_message_flags = 0;
+    Serial.println("CLEAR MEMMORY FLAGS");
+  }
+}
+void listening_pg()
+{
+  uint32_t millix;
+  bool intPg = false;
+  uint8_t i = 0;     //initialize index
+  millix = millis(); //start timer
+  while ((unsigned long)(millis() - millix) < 100)
+  { //while timer doesn't reach 100 ms
+    while (softSerial.available())
+    {                                  //while there is data to read
+      pgData[i++] = softSerial.read(); //read byte and save it
+      millix = millis();
+    }
+  }
+  if (i > 10)
+    intPg = true;
+
+  if (intPg)
+  {
+    //if int pg was triggered
+    intPg = false;       //clear int pg flag
+    pgData[i] = '\0';    //add end of char
+    pg = String(pgData); //convert message received into string
+    DPRINT("PG: ");
+    DPRINTLN(pg);
+    // MANVALV START#01#0100#⸮&
+    pg_interact_while_radio = true;
+    if (pg.indexOf("MANVALV START") > 0)
+    {
+      Serial.println("ES EL COMANDO DE ABRIR VALVULA MANUAL");
+      char valve_num_aux[2];
+      valve_num_aux[0] = pgData[pg.indexOf("MANVALV START") + 14];
+      valve_num_aux[1] = pgData[pg.indexOf("MANVALV START") + 15];
+      uint8_t valve_number = hex2int(valve_num_aux[0]) * 16 + hex2int(valve_num_aux[1]);
+      uint8_t valve_time_hour = hex2int(pgData[pg.indexOf("MANVALV START") + 14 + 3]) * 10 + hex2int(pgData[pg.indexOf("MANVALV START") + 15 + 3]);
+      uint8_t valve_time_min = hex2int(pgData[pg.indexOf("MANVALV START") + 14 + 3 + 2]) * 10 + hex2int(pgData[pg.indexOf("MANVALV START") + 15 + 3 + 2]);
+      Serial.print(valve_number);
+      Serial.print(" valvula - ");
+      Serial.print(valve_time_hour);
+      Serial.print(" horas - ");
+      Serial.print(valve_time_min);
+      Serial.println(" minutos. ");
+      //start_programA = true;
+
+      //I set a flag, when the time of waking up starts all the messages
+      radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
+      radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number;
+      radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = valve_time_hour;
+      radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = valve_time_min;
+
+      man.timer_active = true;
+      man.millix[man.index] = millis();
+      man.time_to_stop[man.index] = 1000 * ((uint32_t)valve_time_hour * 3600 + (uint32_t)valve_time_min * 60);
+      man.valve[man.index] = valve_number;
+      Serial.print("El valor en ms que se maneja por aquí es de: ");
+      Serial.println(man.time_to_stop[man.index]);
+      Serial.print("En la válvula: ");
+      Serial.println(man.valve[man.index]);
+      man.index++;
+    }
+    else if (pg.indexOf("MANPRG START#") > 0)
+    {
+      uint8_t prog_name = (pgData[pg.indexOf("MANPRG START#") + 13] - 65);
+      Serial.print("Programa:");
+      switch (prog_name)
+      {
+      case 0:
+        start_programA = true;
+        Serial.println("A");
+        break;
+      case 1:
+        start_programB = true;
+        Serial.println("B");
+        break;
+      case 2:
+        start_programC = true;
+        Serial.println("C");
+        break;
+      case 3:
+        start_programD = true;
+        Serial.println("D");
+        break;
+      case 4:
+        start_programE = true;
+        Serial.println("E");
+        break;
+      case 5:
+        start_programF = true;
+        Serial.println("F");
+        break;
+      default:
+        break;
+      }
+    }
+    else if (pg.indexOf("STOP ALL") > 0)
+    {
+      Serial.println("Paro TODO"); // I clear all the variables of the programs
+      start_programA = false;
+      start_programA_ones = false;
+      start_programB = false;
+      start_programB_ones = false;
+      start_programC = false;
+      start_programC_ones = false;
+      start_programD = false;
+      start_programD_ones = false;
+      timerE.deleteTimer(timer_A);
+      timerE.deleteTimer(timer_B);
+      timerE.deleteTimer(timer_C);
+      timerE.deleteTimer(timer_D);
+      timerE.deleteTimer(timer_E);
+      timerE.deleteTimer(timer_F);
+
+      radio_waitting_msg.request_STOP_ALL[radio_waitting_msg.num_message_flags++] = true;
+
+      man.timer_active = false; //I clear all the manual stops
+      man.index = 0;
+      for (uint8_t index_man = 0; index_man < MAX_MANUAL_TIMERS; index_man++)
+      {
+        man.millix[index_man] = 0;
+        man.time_to_stop[index_man] = 0;
+        man.valve[index_man] = 0;
+      }
+
+      //send_nodo(1, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
+    }
+    else if (pg.indexOf("SET TIME#") > 0)
+    {
+      uint8_t time_hours = (pgData[pg.indexOf("SET TIME#") + 9] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 10] - '0');
+      uint8_t time_min = (pgData[pg.indexOf("SET TIME#") + 9 + 2] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 10 + 2] - '0');
+      uint8_t time_day_week = (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6] - '0');
+      uint8_t time_year = (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 2] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 3] - '0');
+      uint8_t time_month = (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 2 + 2] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 3 + 2] - '0');
+      uint8_t time_day = (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 2 + 2 + 2] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 3 + 2 + 2] - '0');
+      Serial.print(" Hora: ");
+      Serial.print(time_hours);
+      Serial.print(":");
+      Serial.print(time_min);
+      Serial.print(" Fecha: ");
+      Serial.print(time_day_week);
+      Serial.print(" Hora: ");
+      Serial.print(time_year);
+      Serial.print("/");
+      Serial.print(time_month);
+      Serial.print("/");
+      Serial.print(time_day);
+      rtc.updateTime();
+      Serial.println("");
+      rtc.setTime(0, 0, time_min, time_hours, time_day, time_month, time_year, time_day_week);
+      Serial.println(rtc.stringTime());
+      Serial.println(rtc.stringDate());
+
+      //send_nodo(1, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+    }
+    else if (pg.indexOf("PAIRING#") > 0)
+    {
+      //I always obtein the number of oasis without one unit due to format 8bit vs 16 bits
+      String valve_number = getValue(pg, '#', 1);
+      int valve_number_true = (int)strtol(&valve_number[0], NULL, 16);
+      // Serial.println(valve_number_true);
+      String valve_assigned;
+      int oasis_valves[4];
+      char temp_valve[4];
+      for (int k = 0; k < 4; k++)
+      {
+        valve_assigned = getValue(getValue(pg, '#', 2), ' ', k);
+        oasis_valves[k] = (int)strtol(&valve_assigned[0], NULL, 16);
+        //Serial.println(oasis_valves[k]);
+      }
+      temp_valve[0] = (char)oasis_valves[0];
+      temp_valve[1] = (char)oasis_valves[1];
+      temp_valve[2] = (char)oasis_valves[2];
+      temp_valve[3] = (char)oasis_valves[3];
+
+      //I set the flag for sendding the messages:
+
+      radio_waitting_msg.request_ASSIGNED_VALVES[radio_waitting_msg.num_message_flags] = true;
+      radio_waitting_msg.assigned_info[0][radio_waitting_msg.num_message_flags] = (char)valve_number_true;
+      radio_waitting_msg.assigned_info[1][radio_waitting_msg.num_message_flags] = temp_valve[0];
+      radio_waitting_msg.assigned_info[2][radio_waitting_msg.num_message_flags] = temp_valve[1];
+      radio_waitting_msg.assigned_info[3][radio_waitting_msg.num_message_flags] = temp_valve[2];
+      radio_waitting_msg.assigned_info[4][radio_waitting_msg.num_message_flags] = temp_valve[3];
+
+      for (uint8_t k = 0; k < 5; k++)
+        Serial.println(radio_waitting_msg.assigned_info[k][radio_waitting_msg.num_message_flags]);
+      radio_waitting_msg.num_message_flags++;
+      //send_nodo(1, UUID_1, REQUEST_ASSIGNED_VALVES, valve_number_true + 1, 0, 0, temp_valve);
+    }
+    else if (pg.indexOf("SELECTOR#06") > 0)
+    {
+      Serial.println("STOP");
+      start_programA = false;
+      start_programA_ones = false;
+      start_programB = false;
+      start_programB_ones = false;
+      start_programC = false;
+      start_programC_ones = false;
+      start_programD = false;
+      start_programD_ones = false;
+      radio_waitting_msg.request_STOP_ALL[radio_waitting_msg.num_message_flags++] = true;
+    }
+  }
+}
+uint8_t hex2int(char ch) // For converting the manual valve action
+{
+  if (ch >= '0' && ch <= '9')
+    return ch - '0';
+  if (ch >= 'A' && ch <= 'F')
+    return ch - 'A' + 10;
+  if (ch >= 'a' && ch <= 'f')
+    return ch - 'a' + 10;
+  return -1;
+}
+String getValue(String data, char separator, int index)
+{
+  int found = 0;
+  int strIndex[] = {0, -1};
+  int maxIndex = data.length() - 1;
+
+  for (int i = 0; i <= maxIndex && found <= index; i++)
+  {
+    if (data.charAt(i) == separator || i == maxIndex)
+    {
+      found++;
+      strIndex[0] = strIndex[1] + 1;
+      strIndex[1] = (i == maxIndex) ? i + 1 : i;
+    }
+  }
+  return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
