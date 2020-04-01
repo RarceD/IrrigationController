@@ -161,6 +161,9 @@ void setup()
   Serial.println(rtc.stringTime());
   Serial.println(rtc.stringDate());
   jam.ledBlink(LED_SETUP, 1000);
+  //Set PG in time:
+  change_time_pg(rtc.getWeekday()-1, rtc.getHours(), rtc.getMinutes());                                           //year/month/week/day/hour/min
+  Serial.println("Set time of pg");
   print_flash();
   connectSIM();
   connectMqtt();
@@ -178,7 +181,6 @@ void setup()
   // json_valve_action(false, 3, 0, 5);
   // delay(500);
   // json_program_action(false, 'B');
-  // change_time_pg("15","A")
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -1339,63 +1341,26 @@ void json_week_days(uint8_t program, uint8_t week_day)
   mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
   // root.prettyPrintTo(Serial);
 }
-void change_time_pg(const char *year, const char *month, const char *day, const char *week, const char *hours, const char *minutes) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
+void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
 {
-  cmd_write_data[13] = '0';
-  cmd_write_data[14] = '4';
-  cmd_write_data[15] = '0';
-  cmd_write_data[17] = *year;
-  cmd_write_data[18] = *(year + 1);
-  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-  for (i = 0; i < sizeof(cmd_write_data); i++)
-    Serial.write(cmd_write_data[i]);
-  delay(2000);
-  Serial.println(" ");
-  cmd_write_data[15] = '1';
-  cmd_write_data[17] = *month;
-  cmd_write_data[18] = *(month + 1);
-  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-  for (i = 0; i < sizeof(cmd_write_data); i++)
-    Serial.write(cmd_write_data[i]);
-  delay(2000);
-  Serial.println(" ");
-  cmd_write_data[15] = '2';
-  cmd_write_data[17] = *day;
-  cmd_write_data[18] = *(day + 1);
-  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-  for (i = 0; i < sizeof(cmd_write_data); i++)
-    Serial.write(cmd_write_data[i]);
-  delay(2000);
-  Serial.println(" ");
-  cmd_write_data[15] = '3';
-  cmd_write_data[17] = *week;
-  cmd_write_data[18] = *(week + 1);
-  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-  for (i = 0; i < sizeof(cmd_write_data); i++)
-    Serial.write(cmd_write_data[i]);
-  delay(2000);
-  Serial.println(" ");
-  cmd_write_data[15] = '4';
-  cmd_write_data[17] = *hours;
-  cmd_write_data[18] = *(hours + 1);
-  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-  for (i = 0; i < sizeof(cmd_write_data); i++)
-    Serial.write(cmd_write_data[i]);
-  delay(2000);
-  Serial.println(" ");
-  cmd_write_data[15] = '5';
-  cmd_write_data[17] = *minutes;
-  cmd_write_data[18] = *(minutes + 1);
-  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-  for (i = 0; i < sizeof(cmd_write_data); i++)
-    Serial.write(cmd_write_data[i]);
-  delay(2000);
+  //First set the week of the day
+  cmd_set_time[19] = week + '0';
+  //Second set the hour
+  String time = String(hours);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_set_time[11] = time.charAt(0);
+  cmd_set_time[12] = time.charAt(1);
+  //Third set the minutes
+  time = String(minutes);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_set_time[13] = time.charAt(0);
+  cmd_set_time[14] = time.charAt(1);
+  calcrc((char *)cmd_set_time, sizeof(cmd_set_time) - 2);
+  softSerial.write(cmd_set_time, sizeof(cmd_set_time)); //real send to PG
+  for (i = 0; i < sizeof(cmd_set_time); i++)
+    Serial.write(cmd_set_time[i]);
   Serial.println(" ");
 }
 void json_oasis_paring(bool pairing, uint8_t id_uuid, char *assigned)
