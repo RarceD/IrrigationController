@@ -157,6 +157,7 @@ void setup()
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
+  // rtc.setToCompilerTime();
   Serial.println(rtc.stringTime());
   Serial.println(rtc.stringDate());
   jam.ledBlink(LED_SETUP, 1000);
@@ -165,10 +166,19 @@ void setup()
   connectMqtt();
   delay(500);
   millix = millis();
-  // json_connect_app(); //for sendding to the web that everithing is ok
   char assigned[] = {21, 34, 54, 67};
+
+  //At re-starting the pg is going to read all the info and send it to the web
+  Serial.println("Sendding to app---");
+  //getAllFromPG(); // Have no idea why i can't do both at the same time
+  // json_connect_app(); //for sendding to the web that everithing is ok
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
+  // delay(500);
+  // json_valve_action(false, 3, 0, 5);
+  // delay(500);
+  // json_program_action(false, 'B');
+  // change_time_pg("15","A")
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -201,9 +211,9 @@ void loop()
     char json[100];
     DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
     JsonObject &root = jsonBuffer.createObject();
-    root.set("battery", bat);
+    root.set("voltage", bat);
     root.printTo(json);
-    mqttClient.publish(String("uptime").c_str(), (const uint8_t *)json, strlen(json), false);
+    mqttClient.publish((String(sys.devUuid) + "/uptime").c_str(), (const uint8_t *)json, strlen(json), false);
     millix = millis();
   }
   if (!digitalRead(PCINT_PIN)) //If pressed the button syn with the web
@@ -1410,4 +1420,44 @@ void json_oasis_paring(bool pairing, uint8_t id_uuid, char *assigned)
   else
     mqttClient.publish((String(sys.devUuid) + "/oasis").c_str(), (const uint8_t *)json, strlen(json), false);
   // root.prettyPrintTo(Serial);
+}
+void json_valve_action(bool open, uint8_t valve, uint8_t hours, uint8_t minutes)
+{
+  DynamicJsonBuffer jsonBuffer(100);
+  JsonObject &root = jsonBuffer.createObject();
+  JsonObject &oasis = root.createNestedObject("valves");
+  JsonObject &info = oasis.createNestedObject("");
+  info["v"] = valve;
+  if (open)
+  {
+    info["action"] = 1;
+    String str_hours = String(hours);
+    if (str_hours.length() == 1)
+      str_hours = '0' + str_hours;
+    String str_minutes = String(minutes);
+    if (str_minutes.length() == 1)
+      str_minutes = '0' + str_minutes;
+    info["time"] = str_hours + ":" + str_minutes;
+  }
+  else
+    info["action"] = 0;
+  char json[200];
+  root.printTo(json);
+  // root.prettyPrintTo(Serial);
+  mqttClient.publish((String(sys.devUuid) + "/manvalve").c_str(), (const uint8_t *)json, strlen(json), false);
+}
+void json_program_action(bool open, char program)
+{
+  //Publish in /manprog topic and send to the app whats happening
+  DynamicJsonBuffer jsonBuffer(100);
+  JsonObject &root = jsonBuffer.createObject();
+  root["prog"] = String(program);
+  if (open)
+    root["action"] = 1;
+  else
+    root["action"] = 0;
+  char json[200];
+  root.printTo(json);
+  // root.prettyPrintTo(Serial);
+  mqttClient.publish((String(sys.devUuid) + "/manprog").c_str(), (const uint8_t *)json, strlen(json), false);
 }

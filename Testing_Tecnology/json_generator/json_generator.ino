@@ -65,10 +65,20 @@ void loop()
       json_query("1233", "AUTO");
     if (a == 102) //Pulse f
       json_week_days(4, prog[4].wateringDay);
-    if (a == 103) //Pulse g
-      json_oasis_paring(true, 1, 1, assignation);
-    if (a == 104) //Pulse h
-      json_oasis_paring(false,1, assignation);
+    // if (a == 103) //Pulse g
+      // json_oasis_paring(true, 1, 1, assignation);
+    // if (a == 104) //Pulse h
+      // json_oasis_paring(false, 1, assignation);
+    if (a == 105)// Pulse i
+    { 
+      json_valve_action(true, 3, 0, 5);
+      Serial.println(" ");
+      json_program_action(true, 'B');
+      Serial.println(" ");
+      json_valve_action(false, 3, 1, 35);
+      Serial.println(" ");
+      json_program_action(false, 'B');
+    }
   }
 }
 void json_program(uint8_t program)
@@ -271,7 +281,40 @@ void json_oasis_paring(bool pairing, uint8_t id_uuid, char *assigned)
     data.add(*(assigned + i++));
   root.prettyPrintTo(Serial);
 }
-
+void json_valve_action(bool open, uint8_t valve, uint8_t hours, uint8_t minutes)
+{
+  DynamicJsonBuffer jsonBuffer(100);
+  JsonObject &root = jsonBuffer.createObject();
+  JsonObject &oasis = root.createNestedObject("valves");
+  JsonObject &info = oasis.createNestedObject("");
+  info["v"] = valve;
+  if (open)
+  {
+    info["action"] = 1;
+    String str_hours = String(hours);
+    if (str_hours.length() == 1)
+      str_hours = '0' + str_hours;
+    String str_minutes = String(minutes);
+    if (str_minutes.length () == 1)
+      str_minutes = '0' + str_minutes;
+    info["time"] = str_hours + ":" + str_minutes;
+  }
+  else
+    info["action"] = 0;
+  root.prettyPrintTo(Serial);
+}
+void json_program_action(bool open, char program)
+{
+  //Publish in /manprog topic and send to the app whats happening
+  DynamicJsonBuffer jsonBuffer(100);
+  JsonObject &root = jsonBuffer.createObject();
+  root["prog"] = String(program);
+  if (open)
+    root["action"] = 1;
+  else
+    root["action"] = 0;
+  root.prettyPrintTo(Serial);
+}
 /* PAIIIIIIRING first msg
 {
   "oasis": {
