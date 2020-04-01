@@ -162,7 +162,7 @@ void setup()
   Serial.println(rtc.stringDate());
   jam.ledBlink(LED_SETUP, 1000);
   //Set PG in time:
-  change_time_pg(rtc.getWeekday()-1, rtc.getHours(), rtc.getMinutes());                                           //year/month/week/day/hour/min
+  change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
   Serial.println("Set time of pg");
   print_flash();
   connectSIM();
@@ -427,7 +427,9 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           LOG(", ");
         }
         LOGLN("");
+        change_oasis_assigned(ide[oasis_num] , assigned_id);
       }
+
       send_web("/oasis", sizeof("/oasis"), identifier);
     }
     else if (sTopic.indexOf("program") != -1) //fail valves time
@@ -474,7 +476,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         break;
       }
       //I parse the array of starts and valves, if there's any
-      JsonArray &starts = parsed["starts"];
+      JsonArray &starts = parsed["starts"]; //done
       if (starts.success())
       {
         //First parse all the existed starts:
@@ -521,7 +523,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         uint16_t position_end = position_starts + 6; // try to write in 0x1AA and then in 0x1A8
         while (start_to_clear > 0)
         {
-          Serial.println("GILIPOLLAS");
           for (uint8_t times = 0; times <= 1; times++)
           {
             //First clear from the bottom to the top of the memmory:
@@ -535,8 +536,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             cmd_write_data[18] = 'F';
             calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
             softSerial.write(cmd_write_data, sizeof(cmd_write_data));
-            for (int i = 0; i < sizeof(cmd_write_data); i++)
-              Serial.write(cmd_write_data[i]);
+            //for (int i = 0; i < sizeof(cmd_write_data); i++)
+            //  Serial.write(cmd_write_data[i]);
             Serial.println(" ");
             delay(800);
           }
@@ -545,7 +546,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         }
         //WEEK STARTS:
       }
-      JsonArray &week_day = parsed["week_day"];
+      JsonArray &week_day = parsed["week_day"]; //done
       if (week_day.success())
       {
         String day = "";
@@ -556,7 +557,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         change_week_pg(days, sizeof(days), position_week);
         delay(800);
       }
-      JsonArray &valves = parsed["valves"];
+      JsonArray &valves = parsed["valves"]; //almost done
       if (valves.success())
       {
         // LOG("Exists Valves");
@@ -1314,8 +1315,8 @@ void change_week_pg(char *date, uint8_t lenght, uint8_t program)
   cmd_write_data[18] = str_days.charAt(1);
   calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
   softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-  for (i = 0; i < sizeof(cmd_write_data); i++)
-    Serial.write(cmd_write_data[i]);
+                                                            //for (i = 0; i < sizeof(cmd_write_data); i++)
+                                                            //  Serial.write(cmd_write_data[i]);
 }
 void json_week_days(uint8_t program, uint8_t week_day)
 {
@@ -1341,7 +1342,7 @@ void json_week_days(uint8_t program, uint8_t week_day)
   mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
   // root.prettyPrintTo(Serial);
 }
-void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
+void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes, uint8_t seconds) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
 {
   //First set the week of the day
   cmd_set_time[19] = week + '0';
@@ -1357,6 +1358,12 @@ void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes) //, uint8_t *d
     time = '0' + time;
   cmd_set_time[13] = time.charAt(0);
   cmd_set_time[14] = time.charAt(1);
+  //Fourth set the seconds
+  time = String(seconds);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_set_time[15] = time.charAt(0);
+  cmd_set_time[16] = time.charAt(1);
   calcrc((char *)cmd_set_time, sizeof(cmd_set_time) - 2);
   softSerial.write(cmd_set_time, sizeof(cmd_set_time)); //real send to PG
   for (i = 0; i < sizeof(cmd_set_time); i++)
@@ -1425,4 +1432,30 @@ void json_program_action(bool open, char program)
   root.printTo(json);
   // root.prettyPrintTo(Serial);
   mqttClient.publish((String(sys.devUuid) + "/manprog").c_str(), (const uint8_t *)json, strlen(json), false);
+}
+void change_oasis_assigned(uint8_t oasis_number, uint8_t *assigned)
+{
+  //First prepare the oasis to be write in pg memmory
+  oasis_number--;
+  String str_pos, str_assigned;
+  for (uint8_t index_outputs = 0; index_outputs < 4; index_outputs++)
+  {
+    str_pos = String(0x200 + 4 * oasis_number + index_outputs, HEX);
+    str_pos.toUpperCase();
+    str_assigned = String(*(assigned + index_outputs) - 1, HEX);
+    if (str_assigned.length() != 2)
+      str_assigned = '0' + str_assigned;
+    str_assigned.toUpperCase();
+    cmd_write_data[13] = str_pos.charAt(0);
+    cmd_write_data[14] = str_pos.charAt(1);
+    cmd_write_data[15] = str_pos.charAt(2);
+    cmd_write_data[17] = str_assigned.charAt(0);
+    cmd_write_data[18] = str_assigned.charAt(1);
+    calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+    softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+    for (i = 0; i < sizeof(cmd_write_data); i++)
+      Serial.write(cmd_write_data[i]);
+    delay(1000);
+    Serial.println(" ");
+  }
 }

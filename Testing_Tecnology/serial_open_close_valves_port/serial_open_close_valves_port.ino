@@ -14,7 +14,7 @@ static uint8_t cmd_set_time[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'T', 'I', 'M', 
 
 // static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', '4', '0', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '2', '0', '0', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
@@ -34,13 +34,13 @@ void setup()
   // flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   // flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   softSerial.begin(9600);
-  calcrc((char *)cmd_set_time, sizeof(cmd_set_time) - 2);
-  // softSerial.write(cmd_set_time, sizeof(cmd_set_time));
+  calcrc((char *)cmd_read_line, sizeof(cmd_read_line) - 2);
+  softSerial.write(cmd_read_line, sizeof(cmd_read_line));
   Serial.print("Command send: ");
   Serial.println(" ");
-  for (i = 0; i < sizeof(cmd_set_time); i++)
+  for (i = 0; i < sizeof(cmd_read_line); i++)
   {
-    Serial.write(cmd_set_time[i]);
+    Serial.write(cmd_read_line[i]);
     Serial.print(" ");
   }
   Serial.println();
@@ -211,8 +211,8 @@ void loop()
     }
     if (a == 106) //press 'j'
     {
-      calcrc((char *)cmd_read_time, sizeof(cmd_read_time) - 2);
-      softSerial.write(cmd_read_time, sizeof(cmd_read_time));
+      uint8_t assign_test[] = {11, 22, 33, 44};
+      change_oasis_assigned(6, assign_test);
     }
   }
 
@@ -479,4 +479,30 @@ void change_week_pg(char *date, uint8_t lenght, uint8_t program)
   // softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
   for (i = 0; i < sizeof(cmd_write_data); i++)
     Serial.write(cmd_write_data[i]);
+}
+void change_oasis_assigned(uint8_t oasis_number, uint8_t *assigned)
+{
+  //First prepare the oasis to be write in pg memmory
+  oasis_number--;
+  String str_pos, str_assigned;
+  for (uint8_t index_outputs = 0; index_outputs < 4; index_outputs++)
+  {
+    str_pos = String(0x200 + 4 * oasis_number + index_outputs, HEX);
+    str_pos.toUpperCase();
+    str_assigned = String(*(assigned + index_outputs) - 1, HEX);
+    if (str_assigned.length() != 2)
+      str_assigned = '0' + str_assigned;
+    str_assigned.toUpperCase();
+    cmd_write_data[13] = str_pos.charAt(0);
+    cmd_write_data[14] = str_pos.charAt(1);
+    cmd_write_data[15] = str_pos.charAt(2);
+    cmd_write_data[17] = str_assigned.charAt(0);
+    cmd_write_data[18] = str_assigned.charAt(1);
+    calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+    softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+    for (i = 0; i < sizeof(cmd_write_data); i++)
+      Serial.write(cmd_write_data[i]);
+    delay(1000);
+    Serial.println(" ");
+  }
 }
