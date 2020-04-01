@@ -176,6 +176,7 @@ void setup()
   rtc.updateTime();
   Serial.println(rtc.stringTime());
   Serial.println(rtc.stringDate());
+  change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
   jam.ledBlink(LED_SETUP, 1000);
   timer_check = timerCheck.setInterval(20000, check_time);
   radio_waitting_msg.num_message_flags = 0;
@@ -190,28 +191,54 @@ void setup()
     radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
   }
 }
-
+uint32_t ack_counter;
+bool ack_clear;
 void loop()
 {
-  /*
-  Every 30 seconds I test if the irrigation time is the same as the current RTC time. The function that check this is: check_time();
-  When this happend I start the program (for example A) and set a timer on: timer A.
-  This timer can be overlap so we can start diferent programs at the same time, timer A, B, C, D ,E ,F.
-  */
-  listen_nodo();
+  //I am continously listen to the nodes actions, if something happend then I save
+  if (manager.available()) // Detect radio activity and find id of the nodes
+  {
+    uint8_t len = sizeof(buf);
+    manager.recvfromAck(buf, &len);
+    ack_counter = millis();
+    ack_clear = true;
+  }
+  if ((ack_clear && (millis() - ack_counter > 5000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  {
+    jam.ledBlink(LED_SETUP, 1000);                 //A led ON to realize that I it es continously sendding and cleanning
+    for (uint8_t p = 0; p < 15; p++)
+      Serial.write(buf[p]);
+    ack_clear = false;
+    ack.id_node[0] = false;
+    ack.id_node[1] = false;
+
+    auto_program_flag = false;
+    pg_interact_while_radio = false;
+    rf_msg_tries = 0;
+
+    for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
+    {
+      radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
+      radio_waitting_msg.request_TIME[x] = false;
+      radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
+      radio_waitting_msg.request_STOP_ALL[x] = false;
+      radio_waitting_msg.request_FULL_MESSAGE[x] = false;
+    }
+    radio_waitting_msg.num_message_flags = 0;
+    Serial.println("CLEAR MEMMORY FLAGS");
+  }
+
   /*
   When the Serial Port of the PG is set I read what happend there ant act. If there is an inmidiate action I just write an struct 
   and when is the time to send I do it
   */
   listening_pg();
-
   /*
     The system wakes up at X:55 and start sendding to Oasis
     Oasis wakes at X:00 and listen for 2 second, if in this time receive something sleep
                                                  if it doesn't sleep at X:02
     Oasis wakes up at X:30 and send ACK to master
   */
-
   if (!digitalRead(PCINT_PIN))
   {
     Serial.println("BUTTON PRESSED");
@@ -223,6 +250,7 @@ void loop()
     rtc.updateTime();
     Serial.println(rtc.stringTime());
     oasis_actions = true;
+    ack_counter = 0;
   }
   if (oasis_actions) // When something
   {
@@ -237,34 +265,42 @@ void loop()
     {
       if (millis() - start >= 400) // Every 400ms I send a message to the oasis hoping they will receive them
       {
-        prepare_message(); // This function spends 400ms to compleat
+        //prepare_message  --- This function spends 400ms to compleat
+        for (int i = 0; i < sizeof(data) / 2; i++)
+          data[i] = 'z';
+        uint16_t index = 0; // This index is just for moving into the array
+        data[index++] = '_';
+        if (rf_msg_tries < 2) // Only send time one time
+          send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+        for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++) //Introduce the messages in the data buffer
+          if (radio_waitting_msg.request_MANUAL[msg])
+            send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
+          else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
+          {
+            char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
+            send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
+          }
+          else if (radio_waitting_msg.request_STOP_ALL[msg])
+            send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
+        //This is for debugging
+        for (uint8_t data_index = 0; data_index < sizeof(data); data_index++)
+          Serial.write(data[data_index]);
+        Serial.println(" ");
         counter_syn++;
         manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS); //Send to the receivers
         start = millis();
       }
       listening_pg();
     }
-    /*
-    if (!pg_interact_while_radio) // If the user touch the fucking PG I do not clear the send flags and I send twice
-    {
-      jam.ledBlink(LED_SETUP, 1000); //A led ON to realize that I it es continously sendding and cleanning
-      pg_interact_while_radio = false;
-      for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
-      {
-        radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
-        radio_waitting_msg.request_TIME[x] = false;
-        radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
-        radio_waitting_msg.request_STOP_ALL[x] = false;
-        radio_waitting_msg.request_FULL_MESSAGE[x] = false;
-      }
-      radio_waitting_msg.num_message_flags = 0;
-      Serial.println("CLEAR MEMMORY FLAGS");
-    }
-    */
     counter_syn = 0;
     oasis_actions = false;
   }
+
   /*
+  Every 30 seconds I test if the irrigation time is the same as the current RTC time. The function that check this is: check_time();
+  When this happend I start the program (for example A) and set a timer on: timer A.
+  This timer can be overlap so we can start diferent programs at the same time, timer A, B, C, D ,E ,F.
+
   The ejecution of the programs in order. THIS PART IS A SAME AND I DO NOT CONSIDER RESPONSIBLE FOR THIS PIECE OF SHIT
   */
   if (start_programA)
@@ -550,29 +586,7 @@ void loop()
   timerF.run();
   timerCheck.run();
 }
-void prepare_message() // This function prepare the messages for been sent
-{
-  for (int i = 0; i < sizeof(data) / 2; i++)
-    data[i] = 'z';
-  uint16_t index = 0; // This index is just for moving into the array
-  data[index++] = '_';
-  if (rf_msg_tries < 2) // Only send time one time
-    send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
-  for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++) //Introduce the messages in the data buffer
-    if (radio_waitting_msg.request_MANUAL[msg])
-      send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
-    else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
-    {
-      char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
-      send_nodo(index, UUID_1, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
-    }
-    else if (radio_waitting_msg.request_STOP_ALL[msg])
-      send_nodo(index, UUID_1, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
-  //This is for debugging
-  for (uint8_t data_index = 0; data_index < sizeof(data); data_index++)
-    Serial.write(data[data_index]);
-  Serial.println(" ");
-}
+
 void check_time() // This function test if the current time fix with the program time
 {
   rtc.updateTime();
@@ -722,7 +736,7 @@ void waitValveCloseE()
   radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
   radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
   auto_program_flag = true; //Do not clean the buffer before sendding
-  
+
   delay(1000);
   index_prog_E++;
   start_programE = true;
@@ -737,7 +751,7 @@ void waitValveCloseF()
   radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
   //send_nodo(UUID_1, REQUEST_MANVAL, index_prog_F + 1, 0, 0, asignacion);
   auto_program_flag = true; //Do not clean the buffer before sendding
-  
+
   delay(1000);
   index_prog_F++;
   start_programF = true;
@@ -904,64 +918,6 @@ void rtc_node(int hour, int minute, int second, int day, int month, uint16_t &or
   //for (int i = 0; i < sizeof(send); i++)
   //  Serial.write(send[i]);
   //manager.sendtoWait(data, sizeof(send), CLIENT_ADDRESS);
-}
-void listen_nodo() // if the oasis send something i listen
-{
-  if (manager.available()) // Detect radio activity and find id of the nodes
-  {
-    uint8_t len = sizeof(buf);
-    manager.recvfromAck(buf, &len);
-    switch (buf[5])
-    {
-    case '1':
-      // Serial.println("Node 1 OK");
-      ack.id_node[0] = true;
-      break;
-    case '2':
-      // Serial.println("Node 2 OK");
-      ack.id_node[1] = true;
-      break;
-    case '3':
-      // Serial.println("Node 3 OK");
-      ack.id_node[2] = true;
-      break;
-    case '4':
-      // Serial.println("Node 4 OK");
-      ack.id_node[3] = true;
-      break;
-    case '5':
-      // Serial.println("Node 5 OK");
-      ack.id_node[4] = true;
-      break;
-    default:
-      Serial.println("Everything is bad");
-      break;
-    }
-    for (uint8_t inde_X = 0; inde_X < 20; inde_X++)
-      Serial.write(buf[inde_X]);
-    Serial.println(" ");
-  }
-  if ((ack.id_node[0] && ack.id_node[1] && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
-  {
-    ack.id_node[0] = false;
-    ack.id_node[1] = false;
-
-    auto_program_flag = false;
-    pg_interact_while_radio = false;
-    rf_msg_tries = 0;
-
-    jam.ledBlink(LED_SETUP, 1000);                 //A led ON to realize that I it es continously sendding and cleanning
-    for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
-    {
-      radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
-      radio_waitting_msg.request_TIME[x] = false;
-      radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
-      radio_waitting_msg.request_STOP_ALL[x] = false;
-      radio_waitting_msg.request_FULL_MESSAGE[x] = false;
-    }
-    radio_waitting_msg.num_message_flags = 0;
-    Serial.println("CLEAR MEMMORY FLAGS");
-  }
 }
 void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory in a given range of address - It is not changed
 {
@@ -1462,4 +1418,52 @@ String getValue(String data, char separator, int index)
 void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
   intRtc = true; //set flag to indicate that rtc interrupt was triggered
+}
+void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes, uint8_t seconds) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
+{
+  //First set the week of the day
+  cmd_set_time[19] = week + '0';
+  //Second set the hour
+  String time = String(hours);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_set_time[11] = time.charAt(0);
+  cmd_set_time[12] = time.charAt(1);
+  //Third set the minutes
+  time = String(minutes);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_set_time[13] = time.charAt(0);
+  cmd_set_time[14] = time.charAt(1);
+  //Fourth set the seconds
+  time = String(seconds);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_set_time[15] = time.charAt(0);
+  cmd_set_time[16] = time.charAt(1);
+  calcrc((char *)cmd_set_time, sizeof(cmd_set_time) - 2);
+  softSerial.write(cmd_set_time, sizeof(cmd_set_time)); //real send to PG
+  //for (i = 0; i < sizeof(cmd_set_time); i++)
+  //  Serial.write(cmd_set_time[i]);
+}
+int calcrc(char ptr[], int length)
+{
+  char i;
+  int crc = 0;
+
+  while (--length >= 0)
+  {
+    crc = crc ^ (int)*ptr++ << 8;
+    i = 8;
+    do
+    {
+      if (crc & 0x8000)
+        crc = crc << 1 ^ 0x1021;
+      else
+        crc = crc << 1;
+    } while (--i);
+  }
+  *ptr = crc & 0xff;
+  *(++ptr) = crc >> 8;
+  return (crc);
 }
