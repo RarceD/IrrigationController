@@ -14,10 +14,14 @@ static uint8_t cmd_set_time[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'T', 'I', 'M', 
 
 // static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '2', '0', '0', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '3', 'E', '0', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
+
+static uint8_t cmd_com_error[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'O', 'A', 'S', 'I', 'S', 0x23, ' ', ' ', 0x23, 'C', 'O', 'M', 0x23, 0, 0};
+static uint8_t cmd_ok[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'O', 'A', 'S', 'I', 'S', 0x23, ' ', ' ', 0x23, 'O', 'K', 0x23, 0, 0};
+static uint8_t cmd_nok[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'O', 'A', 'S', 'I', 'S', 0x23, ' ', ' ', 0x23, 'N', 'O', 'K', 0x23, 0, 0};
 
 uint16_t i, j;
 int calcrc(char ptr[], int length);
@@ -54,7 +58,7 @@ void loop()
   if (Serial.available())
   {
     int a = Serial.read();
-    Serial.println(a);
+    // Serial.println(a);
     if (a == 97) // Open all valves
       action_valve_pg(true, 1, 0, 35);
     if (a == 98) //Close all valves
@@ -213,6 +217,22 @@ void loop()
     {
       uint8_t assign_test[] = {11, 22, 33, 44};
       change_oasis_assigned(6, assign_test);
+    }
+    if (a == 107) //prexx 'k'
+    oasis_number
+      String str_oasis_number = String(oasis_number++, HEX);
+      if (str_oasis_number.length() == 1)
+        str_oasis_number = '0' + str_oasis_number;
+      str_oasis_number.toUpperCase();
+      cmd_write_data[13] = '3';
+      cmd_write_data[14] = 'E';
+      cmd_write_data[15] = '0';
+      cmd_write_data[17] = str_oasis_number.charAt(0);
+      cmd_write_data[18] = str_oasis_number.charAt(1);
+      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+      softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+      for (i = 0; i < sizeof(cmd_write_data); i++)
+        Serial.write(cmd_write_data[i]);
     }
   }
 
@@ -505,4 +525,30 @@ void change_oasis_assigned(uint8_t oasis_number, uint8_t *assigned)
     delay(1000);
     Serial.println(" ");
   }
+}
+void fault_in_radio(uint8_t oasis_number, bool error)
+{
+  String str_oasis_number = String(oasis_number, HEX);
+  if (str_oasis_number.length() == 1)
+    str_oasis_number = '0' + str_oasis_number;
+  str_oasis_number.toUpperCase();
+  if (error)
+  {
+    cmd_nok[12] = str_oasis_number.charAt(0);
+    cmd_nok[13] = str_oasis_number.charAt(1);
+    calcrc((char *)cmd_nok, sizeof(cmd_nok) - 2);
+    softSerial.write(cmd_nok, sizeof(cmd_nok));
+    for (i = 0; i < sizeof(cmd_nok); i++)
+      Serial.write(cmd_nok[i]);
+  }
+  else
+  {
+    cmd_ok[12] = str_oasis_number.charAt(0);
+    cmd_ok[13] = str_oasis_number.charAt(1);
+    calcrc((char *)cmd_ok, sizeof(cmd_ok) - 2);
+    softSerial.write(cmd_ok, sizeof(cmd_ok));
+    for (i = 0; i < sizeof(cmd_ok); i++)
+      Serial.write(cmd_ok[i]);
+  }
+  Serial.println(" ");
 }

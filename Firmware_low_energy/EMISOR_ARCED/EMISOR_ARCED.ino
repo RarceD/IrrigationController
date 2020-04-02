@@ -49,9 +49,6 @@ typedef struct
   uint8_t oasisRfId[MAX_CHILD];
   char oasisUuid[MAX_CHILD][UUID_LEN];
   uint8_t childValves[MAX_CHILD][4];
-  uint8_t master_id;
-  uint8_t UUID[UUID_LENGTH];
-  uint8_t nodes_uuid[UUID_LENGTH][MAX_NODE_NUMBER];
 } sysVar;
 typedef struct
 {
@@ -90,15 +87,11 @@ typedef enum
   REQUEST_STOP_ALL,
   REQUEST_FULL_MESSAGE
 } messages_radio;
-typedef struct
-{
-  bool id_node[32]; // I allow 32 nodes, 4 bytes of memmory
-} msg_received_all;
 
 Jam jam; // All the structs defined
 sysVar sys;
 manual man;
-msg_received_all ack;
+// msg_received_all ack;
 program prog[TOTAL_PROG];
 radio_actions radio_waitting_msg;
 
@@ -113,7 +106,7 @@ RHReliableDatagram manager(driver, SERVER_ADDRESS);
 uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
 
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
-uint8_t buf[50];
+uint8_t buf[120];
 bool rf_flag = false;
 
 String pg;
@@ -192,30 +185,64 @@ void setup()
   }
 }
 uint32_t ack_counter;
-bool ack_clear;
+bool ack_clear, one_time;
+uint8_t offset = 0;
 void loop()
 {
   //I am continously listen to the nodes actions, if something happend then I save
   if (manager.available()) // Detect radio activity and find id of the nodes
   {
     uint8_t len = sizeof(buf);
-    manager.recvfromAck(buf, &len);
+    manager.recvfromAck(buf + offset, &len); //Save all the info received in buff for later analize
+    offset += len;                           //increse the pointer in the buffer for not overlapping the msg
     ack_counter = millis();
     ack_clear = true;
   }
-  if ((ack_clear && (millis() - ack_counter > 5000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
+  if ((ack_clear && (millis() - ack_counter > 7000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
-    jam.ledBlink(LED_SETUP, 1000);                 //A led ON to realize that I it es continously sendding and cleanning
-    for (uint8_t p = 0; p < 15; p++)
-      Serial.write(buf[p]);
+    uint8_t buf_info[120];
+    bool ack_oasis[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    memcpy(buf_info, buf, sizeof(buf)); //copy the global and slow array to local and analize
+    //Extract the info and save in bool buffer:
+    for (uint8_t p = 0; p < 140; p++)
+      if (buf_info[p] == 'K')
+        ack_oasis[(buf_info[p + 2] - '0') - 1] = true;
+    //I send the commands to PG6011 in order to visulize the communication problems
+    uint8_t oasis_number = 0, binary_index = 1;
+    #define NUMBER_NODES 7
+    for (int a = 0; a < NUMBER_NODES; a++)
+    {
+      Serial.print(ack_oasis[a]);
+      Serial.print(" ");
+      if (!ack_oasis[a])
+        oasis_number += binary_index;
+      binary_index *= 2;
+    }
+    //Writting in the PG memmory
+    String str_oasis_number = String(oasis_number, HEX);
+    if (str_oasis_number.length() == 1)
+      str_oasis_number = '0' + str_oasis_number;
+    str_oasis_number.toUpperCase();
+    cmd_write_data[13] = '3';
+    cmd_write_data[14] = 'F';
+    cmd_write_data[15] = '0';
+    cmd_write_data[17] = str_oasis_number.charAt(0);
+    cmd_write_data[18] = str_oasis_number.charAt(1);
+    pgCommand(cmd_write_data, sizeof(cmd_write_data));
+    //calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+    //softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+    for (i = 0; i < sizeof(cmd_write_data); i++)
+      Serial.write(cmd_write_data[i]);
+    Serial.println(" ");
+    //Clear all the necessary flags
+    offset = 0;
     ack_clear = false;
-    ack.id_node[0] = false;
-    ack.id_node[1] = false;
-
     auto_program_flag = false;
     pg_interact_while_radio = false;
     rf_msg_tries = 0;
-
+    for (uint8_t p = 0; p < 140; p++)
+      buf[p] = '_';
     for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
     {
       radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
@@ -227,7 +254,6 @@ void loop()
     radio_waitting_msg.num_message_flags = 0;
     Serial.println("CLEAR MEMMORY FLAGS");
   }
-
   /*
   When the Serial Port of the PG is set I read what happend there ant act. If there is an inmidiate action I just write an struct 
   and when is the time to send I do it
@@ -241,8 +267,11 @@ void loop()
   */
   if (!digitalRead(PCINT_PIN))
   {
+    digitalWrite(LED_SETUP, HIGH);
     Serial.println("BUTTON PRESSED");
     getAllFromPG();
+    digitalWrite(LED_SETUP, LOW);
+
   }
   if (intRtc) // I wake up at 58 seconds just for 10 seconds
   {
@@ -295,7 +324,6 @@ void loop()
     counter_syn = 0;
     oasis_actions = false;
   }
-
   /*
   Every 30 seconds I test if the irrigation time is the same as the current RTC time. The function that check this is: check_time();
   When this happend I start the program (for example A) and set a timer on: timer A.
