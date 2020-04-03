@@ -14,7 +14,7 @@ static uint8_t cmd_set_time[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'T', 'I', 'M', 
 
 // static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '3', 'E', '0', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', '4', '8', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
@@ -218,9 +218,9 @@ void loop()
       uint8_t assign_test[] = {11, 22, 33, 44};
       change_oasis_assigned(6, assign_test);
     }
-    if (a == 107) //prexx 'k'
-    oasis_number
-      String str_oasis_number = String(oasis_number++, HEX);
+    if (a == 107)
+    {
+      String str_oasis_number = String(1, HEX);
       if (str_oasis_number.length() == 1)
         str_oasis_number = '0' + str_oasis_number;
       str_oasis_number.toUpperCase();
@@ -233,7 +233,7 @@ void loop()
       softSerial.write(cmd_write_data, sizeof(cmd_write_data));
       for (i = 0; i < sizeof(cmd_write_data); i++)
         Serial.write(cmd_write_data[i]);
-    }
+    } //prexx 'k'
   }
 
   while (softSerial.available())
