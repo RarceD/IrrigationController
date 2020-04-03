@@ -1,5 +1,5 @@
 #include <JamAtm-Vyrsa.h>
-#include <SimpleTimer.h>
+// #include <SimpleTimer.h>
 
 /******************************************************************* debug ********************************************************************************************/
 #define DEBUG_ON
@@ -31,16 +31,7 @@
 
 #define TX_PWR 20
 #define CLIENT_ADDRESS 2
-
-#define CLIENT_ADDRESS_1 2
-#define CLIENT_ADDRESS_2 3
-#define CLIENT_ADDRESS_3 4
-#define CLIENT_ADDRESS_4 5
-#define CLIENT_ADDRESS_5 6
-
 #define SERVER_ADDRESS 1
-
-#define TIME_RESPONSE_NODE 1000
 
 #define FLASH_SYS_DIR 0x040400
 typedef enum
@@ -77,14 +68,13 @@ RHReliableDatagram manager(driver, CLIENT_ADDRESS);
 volatile bool intButton, intRtc, Global_Flag_int;
 uint16_t Set_Vshot = 600;
 uint8_t iOpen = 0, valveOpened[4];
-uint8_t i, j, cmd, msgPending, minAlarm, hourAlarm, secAlarm, dataSize;
+uint8_t i, j;
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN];
 uint8_t data_size, buf[RH_RF95_MAX_MESSAGE_LEN];
-bool valve_flag, time_flag, assigned_flag, stop_flag, rf_flag, rtc_interrupt;
 bool to_sleep;
 //uint32_t currentTime, millix;
-int timer_manual_1, timer_manual_2, timer_manual_3, timer_manual_4;
-uint32_t start = 0;
+// int timer_manual_1, timer_manual_2, timer_manual_3, timer_manual_4;
+// uint32_t start = 0;
 
 /******************************************************************* setup section ************************************************************************************/
 uint32_t millix;
@@ -202,14 +192,14 @@ void loop()
         to_sleep = true;
         for (int i = 0; i < sizeof(buf); i++)
           Serial.write(buf[i]);
-        Serial.println(" ");
+        DPRINTLN(" ");
         jam.ledBlink(LED_SETUP, 1000); //A led ON to realize that I it es continously receiving
         delay(10);
         // I set a timer for sendding the ACK to master
       }
       if (millis() - millix >= 2000 || to_sleep) // It is awake for 2 seconds
       {
-        Serial.println(" A dormir");
+        DPRINTLN(" A dormir");
         // for (uint8_t clear = 0; clear < sizeof(buf); clear++)
         // buf[clear] = 'z';
         to_sleep = false;
@@ -223,11 +213,11 @@ void loop()
       driver.sleep();
       lowPower.sleep_delay(200);
     }
-    if (rtc_interrupt)
+    if (intRtc)
     {
-      rtc_interrupt = false;
+      intRtc = false;
       rtc.updateTime();
-      Serial.println(rtc.stringTime());
+      DPRINTLN(rtc.stringTime());
 
       if (SEND_ACK)
       {
@@ -235,14 +225,14 @@ void loop()
         rtc.setAlarmMode(6);
         rtc.setAlarm(0, 0, 0, 0, 0);
         send_master(ACK);
-        Serial.println("ACK MODE");
+        DPRINTLN("ACK MODE");
       }
       else
       {
         MODE_AWAKE = true;
         rtc.setAlarmMode(6);
         rtc.setAlarm(30, 0, 0, 0, 0);
-        Serial.println("AWAKE MODE");
+        DPRINTLN("AWAKE MODE");
         millix = millis();
       }
       delay(10);
@@ -394,7 +384,6 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
     }
   }
   for (i = 0; i < 4; i++)
-  {
     if (valveOpened[i] == aux)
     {
       if (Dir)
@@ -406,7 +395,6 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
       }
       break;
     }
-  }
   if (Dir && !defined)
   {
     valveOpened[iOpen] = aux;
@@ -416,7 +404,7 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 }
 void listen_master() // Listen and actuate in consideration
 {
-  Serial.println("He recibido del master: ");
+  DPRINTLN("He recibido del master: ");
   uint8_t start_msg_letter[] = "AAAA"; //The max number of messages in buffer is 4 because why not?
   char timestamp_array[] = "1581874380";
   uint8_t index_start_msg = 0;
@@ -432,15 +420,15 @@ void listen_master() // Listen and actuate in consideration
     if (i > 0 && i < 11)
       timestamp_array[i - 1] = (char)buf[i];
   }
-  //Serial.println("  ");
+  //DPRINTLN("  ");
   //Serial.print("The number of messages is: ");
-  //Serial.println(index_start_msg);
+  //DPRINTLN(index_start_msg);
 
   //I obtein the timestamp in an usefull way and then change the time:
 
   // TO DO
 
-  //Serial.println(timestamp_master);
+  //DPRINTLN(timestamp_master);
   bool is_for_me = false;
   uint8_t buffer_index = 0; // This variable is for offset what I am doing
   // I execute all the actions saved in the buffer start_msg_letter[]
@@ -448,17 +436,17 @@ void listen_master() // Listen and actuate in consideration
   {
     //Serial.print("The letter of the msg is: ");
     //Serial.write(buf[start_msg_letter[index_start_msg - 1]]);
-    //Serial.println("  ");
+    //DPRINTLN("  ");
     switch (buf[start_msg_letter[--index_start_msg]])
     {
     case MANVAL_MSG:
     {
-      Serial.println("VALVE ACTION");
+      DPRINTLN("VALVE ACTION");
       //##MANVAL#002#00:10#A1#MAN
       //--012345678901234567890123456
       Serial.write(buf[start_msg_letter[index_start_msg] + 7]);
       Serial.write(buf[start_msg_letter[index_start_msg] + 9]);
-      Serial.println("");
+      DPRINTLN("");
 
       if (buf[start_msg_letter[index_start_msg] + 17] == sys.master_id[0] && buf[start_msg_letter[index_start_msg] + 18])
       {
@@ -466,18 +454,18 @@ void listen_master() // Listen and actuate in consideration
         uint8_t valve_action = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0');
         uint8_t valve_time_hours = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
         uint8_t valve_time_minutes = (buf[buffer_index + 7] - '0') * 10 + (buf[buffer_index + 8] - '0');
-        Serial.print("Valve action: ");
-        Serial.print(valve_action);
-        Serial.print(" time: ");
-        Serial.print(valve_time_hours);
-        Serial.print(":");
-        Serial.println(valve_time_minutes);
+        DPRINT("Valve action: ");
+        DPRINT(valve_action);
+        DPRINT(" time: ");
+        DPRINT(valve_time_hours);
+        DPRINT(":");
+        DPRINTLN(valve_time_minutes);
 
         for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
         {
           if (sys.assigned_output[i] == valve_action)
           {
-            Serial.println("This valve is in my options ");
+            DPRINTLN("This valve is in my options ");
             if (valve_time_hours == 0 && valve_time_minutes == 0)
               valveAction(i + 1, false);
             else
@@ -520,7 +508,7 @@ void listen_master() // Listen and actuate in consideration
     }
     case ASSIGNED_MSG:
     {
-      Serial.println("ASSIGNED IN PROGRESS");
+      DPRINTLN("ASSIGNED IN PROGRESS");
 
       //##ASIGNED#720#045:099:004:035#00
       buffer_index = start_msg_letter[index_start_msg] + 8;
@@ -528,7 +516,7 @@ void listen_master() // Listen and actuate in consideration
       Serial.write(buf[buffer_index + 21]);
       Serial.write(buf[buffer_index + 20]);
 
-      //Serial.println("");
+      //DPRINTLN("");
       uint8_t id_msg = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0') + 1;
       //  I test if the message is for me checking the unique ID
       // This only is used when the assignation message is sent
@@ -536,21 +524,21 @@ void listen_master() // Listen and actuate in consideration
         is_for_me = true;
       else
         is_for_me = false;
-      Serial.print("Assigned done in id: ");
-      Serial.print(id_msg);
-      Serial.print(" outputs: ");
+      DPRINT("Assigned done in id: ");
+      DPRINT(id_msg);
+      DPRINT(" outputs: ");
       uint8_t offset_msg = 0;
       uint8_t out[4];
       for (uint8_t msg_index = 0; msg_index < 4; msg_index++, offset_msg += 4)
       {
         out[msg_index] = (buf[buffer_index + 4 + offset_msg] - '0') * 100 + (buf[buffer_index + 5 + offset_msg] - '0') * 10 + (buf[buffer_index + 6 + offset_msg] - '0');
-        Serial.print(out[msg_index] + 1);
-        Serial.print(" ");
+        DPRINT(out[msg_index] + 1);
+        DPRINT(" ");
       }
       // If the node ID is the same as saved then execute
       if (is_for_me)
       {
-        Serial.println("Es para mi, hago la asignación");
+        DPRINTLN("Es para mi, hago la asignación");
         sys.assigned_output[0] = out[0] + 1;
         sys.assigned_output[1] = out[1] + 1;
         sys.assigned_output[2] = out[2] + 1;
@@ -579,15 +567,14 @@ void listen_master() // Listen and actuate in consideration
       }
       else
       {
-        Serial.println("Esto no es de mi master, es para el: ");
+        DPRINTLN("Esto no es de mi master, es para el: ");
         Serial.write(buf[buffer_index + 9]);
         Serial.write(buf[buffer_index + 10]);
       }
-      stop_flag = true;
       break;
     }
     default:
-      Serial.println("NO TIENE QUE SALIR");
+      DPRINTLN("NO TIENE QUE SALIR");
       delay(500);
     }
   }
@@ -596,12 +583,12 @@ void send_master(uint8_t msg) // I just have to send the flash info for getting 
 {
   if (msg == ACK)
   {
-    // Serial.println("I send ack to master");
+    // DPRINTLN("I send ack to master");
     for (int i = 0; i < sizeof(sys.ack_msg); i++)
       data[i] = sys.ack_msg[i];
   }
   uint8_t batery_level = batLevel();
-  data[9] = (batery_level / 10)+ '0';
+  data[9] = (batery_level / 10) + '0';
   data[10] = (batery_level % 10) + '0';
   manager.sendtoWait(data, 15, SERVER_ADDRESS);
 }
@@ -620,22 +607,22 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
   currentTime[6] = rtc.DECtoBCD(year - 2000);
   currentTime[7] = rtc.DECtoBCD(0);
   rtc.setTime(currentTime, TIME_ARRAY_LENGTH);
-  Serial.println("TIME CHANGE");
-  // Serial.print(rtc.stringDate());
-  // Serial.print(" ");
-  // Serial.println(rtc.stringTime());
-  // Serial.print("DayOfWeek: ");
-  // Serial.println(rtc.dayOfWeek());
+  DPRINTLN("TIME CHANGE");
+  // DPRINT(rtc.stringDate());
+  // DPRINT(" ");
+  // DPRINTLN(rtc.stringTime());
+  // DPRINT("DayOfWeek: ");
+  // DPRINTLN(rtc.dayOfWeek());
 
   // /***** timestamp ******/
   // rtc.updateTime();
-  // Serial.print("timestamp: ");
-  // Serial.println(rtc.getTimestamp());
+  // DPRINT("timestamp: ");
+  // DPRINTLN(rtc.getTimestamp());
 }
 void rtcInt()
 {
-  Serial.println("RTC_INT");
-  rtc_interrupt = true;
+  DPRINTLN("RTC_INT");
+  intRtc = true;
 }
 void buttonInt()
 {
@@ -646,24 +633,24 @@ void buttonInt()
 }
 void print_flash()
 {
-  Serial.print("The ID value is: ");
-  Serial.println(sys.id);
-  Serial.print("The assignated valves are: ");
-  Serial.print(sys.assigned_output[0]);
-  Serial.print(", ");
-  Serial.print(sys.assigned_output[1]);
-  Serial.print(", ");
-  Serial.print(sys.assigned_output[2]);
-  Serial.print(", ");
-  Serial.print(sys.assigned_output[3]);
-  Serial.println(" ");
-  Serial.print("The master UUID is: ");
+  DPRINT("The ID value is: ");
+  DPRINTLN(sys.id);
+  DPRINT("The assignated valves are: ");
+  DPRINT(sys.assigned_output[0]);
+  DPRINT(", ");
+  DPRINT(sys.assigned_output[1]);
+  DPRINT(", ");
+  DPRINT(sys.assigned_output[2]);
+  DPRINT(", ");
+  DPRINT(sys.assigned_output[3]);
+  DPRINTLN(" ");
+  DPRINT("The master UUID is: ");
   Serial.write(sys.master_id[0]);
-  Serial.print(" ");
+  DPRINT(" ");
   Serial.write(sys.master_id[1]);
-  Serial.println(" ");
-  Serial.print("The msg of ack is: ");
+  DPRINTLN(" ");
+  DPRINT("The msg of ack is: ");
   for (int i = 0; i < sizeof(sys.ack_msg); i++)
     Serial.write(sys.ack_msg[i]);
-  Serial.println(" ");
+  DPRINTLN(" ");
 }

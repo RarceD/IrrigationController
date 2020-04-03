@@ -188,6 +188,8 @@ void setup()
     radio_waitting_msg.request_STOP_ALL[msg] = false;
     radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
   }
+  DPRINT("SAVE RAM: ");
+  DPRINTLN(freeRam());
 }
 void loop()
 {
@@ -214,7 +216,7 @@ void loop()
     {
       ack.save_ack_pg_counter = 0;
       uint8_t oasis_number = 0, binary_index = 1;
-      for (int a = 0; a < NUMBER_NODES; a++)
+      for (uint8_t a = 0; a < NUMBER_NODES; a++)
       {
         DPRINT(ack.oasis[a]);
         if (!ack.oasis[a])
@@ -235,7 +237,8 @@ void loop()
       pgCommand(cmd_write_data, sizeof(cmd_write_data));
       for (i = 0; i < sizeof(cmd_write_data); i++)
         Serial.write(cmd_write_data[i]);
-      DPRINTLN(" ");
+      DPRINT("SAVE RAM: ");
+      DPRINTLN(freeRam());
     }
     else
       ack.save_ack_pg_counter++;
@@ -298,7 +301,7 @@ void loop()
       if (millis() - start >= 400) // Every 400ms I send a message to the oasis hoping they will receive them
       {
         //prepare_message  --- This function spends 400ms to compleat
-        for (int i = 0; i < sizeof(data) / 2; i++)
+        for (uint8_t i = 0; i < sizeof(data) / 2; i++)
           data[i] = 'z';
         uint16_t index = 0; // This index is just for moving into the array
         data[index++] = '_';
@@ -586,8 +589,6 @@ void loop()
   if (man.timer_active) // This timer start only when we have start a manual valve action and we have to stop
   {
     for (uint8_t index_manual = 0; index_manual < MAX_MANUAL_TIMERS; index_manual++)
-    {
-      // The first element is the time of the valve and the second element is
       if (man.millix[index_manual] != 0 && millis() - man.millix[index_manual] >= man.time_to_stop[index_manual])
       {
         auto_program_flag = true; //Do not clean the buffer before sendding
@@ -607,7 +608,6 @@ void loop()
         if (man.index < 1)
           man.timer_active = false;
       }
-    }
   }
   timerA.run();
   timerB.run();
@@ -1468,4 +1468,10 @@ void waitValveCloseF()
   delay(1000);
   index_prog_F++;
   start_programF = true;
+}
+int freeRam()
+{
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
