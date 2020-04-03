@@ -116,10 +116,10 @@ void setup()
   sys.id = 8;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '1';
-  sys.assigned_output[0] = 3;
-  sys.assigned_output[1] = 4;
-  sys.assigned_output[2] = 5;
-  sys.assigned_output[3] = 6;
+  sys.assigned_output[0] = 1;
+  sys.assigned_output[1] = 2;
+  sys.assigned_output[2] = 3;
+  sys.assigned_output[3] = 4;
   char ack[] = "##OK08##";
   for (int i = 0; i < sizeof(ack); i++)
     sys.ack_msg[i] = ack[i]; 
@@ -139,7 +139,6 @@ void setup()
   rtc.set24Hour();
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
-  // rtc.setAlarmMode(0);
   rtc.setAlarmMode(6);
   rtc.setAlarm(0, 0, 0, 0, 0);
   // rtc.setToCompilerTime();
@@ -178,22 +177,20 @@ void loop()
     }
     jam.ledBlink(LED_SETUP, 500);
   }
-  // When is syn there are 3 modes: SLEEP, AWAKE and SEND_ACK
+  // When it's syn there are 3 modes: SLEEP, AWAKE and SEND_ACK
   else
   {
     if (MODE_AWAKE)
     {
-      delay(10);
       if (manager.available()) // Detect radio activity
       {
         uint8_t len = sizeof(buf);
         manager.recvfromAck(buf, &len);
         listen_master(); //When activity is detected listen the master
         to_sleep = true;
-        for (int i = 0; i < sizeof(buf); i++)
-          Serial.write(buf[i]);
-        DPRINTLN(" ");
-        jam.ledBlink(LED_SETUP, 1000); //A led ON to realize that I it es continously receiving
+        //for (int i = 0; i < sizeof(buf); i++)
+        //  Serial.write(buf[i]);
+        //DPRINTLN(" ");
         delay(10);
         // I set a timer for sendding the ACK to master
       }
@@ -208,18 +205,18 @@ void loop()
         delay(10);
       }
     }
-    if (!MODE_AWAKE)
+    if (!MODE_AWAKE) //If there is no interrupts the node is going to sleep forever
     {
       driver.sleep();
       lowPower.sleep_delay(200);
     }
-    if (intRtc)
+    if (intRtc) //The rtc interrupt is triggered and there are 2 options
     {
       intRtc = false;
       rtc.updateTime();
       DPRINTLN(rtc.stringTime());
 
-      if (SEND_ACK)
+      if (SEND_ACK) //The oasis has to send the ACK to the master
       {
         SEND_ACK = false;
         rtc.setAlarmMode(6);
@@ -227,7 +224,7 @@ void loop()
         send_master(ACK);
         DPRINTLN("ACK MODE");
       }
-      else
+      else //The oasis has to listen and execute the rf commands
       {
         MODE_AWAKE = true;
         rtc.setAlarmMode(6);
@@ -406,29 +403,13 @@ void listen_master() // Listen and actuate in consideration
 {
   DPRINTLN("He recibido del master: ");
   uint8_t start_msg_letter[] = "AAAA"; //The max number of messages in buffer is 4 because why not?
-  char timestamp_array[] = "1581874380";
   uint8_t index_start_msg = 0;
-
   // I first find the number of msg and the position of the first letter of them
   // I save them on start_msg_letter[]
-
   for (int i = 0; i < sizeof(buf); i++)
-  {
     if (buf[i] == '#')
       if (buf[i + 1] == '#')
         start_msg_letter[index_start_msg++] = i + 2; // I find the number of messages in the buffer and also the position of start
-    if (i > 0 && i < 11)
-      timestamp_array[i - 1] = (char)buf[i];
-  }
-  //DPRINTLN("  ");
-  //Serial.print("The number of messages is: ");
-  //DPRINTLN(index_start_msg);
-
-  //I obtein the timestamp in an usefull way and then change the time:
-
-  // TO DO
-
-  //DPRINTLN(timestamp_master);
   bool is_for_me = false;
   uint8_t buffer_index = 0; // This variable is for offset what I am doing
   // I execute all the actions saved in the buffer start_msg_letter[]
@@ -436,7 +417,6 @@ void listen_master() // Listen and actuate in consideration
   {
     //Serial.print("The letter of the msg is: ");
     //Serial.write(buf[start_msg_letter[index_start_msg - 1]]);
-    //DPRINTLN("  ");
     switch (buf[start_msg_letter[--index_start_msg]])
     {
     case MANVAL_MSG:
@@ -504,6 +484,8 @@ void listen_master() // Listen and actuate in consideration
       if (seconds < 53 && seconds > 1)
         seconds -= 1;
       change_time(hours, minutes, day, month, seconds, 2020);
+      jam.ledBlink(LED_SETUP, 500); //A led ON to realize that I it es continously receiving
+
       break;
     }
     case ASSIGNED_MSG:
@@ -575,7 +557,6 @@ void listen_master() // Listen and actuate in consideration
     }
     default:
       DPRINTLN("NO TIENE QUE SALIR");
-      delay(500);
     }
   }
 }

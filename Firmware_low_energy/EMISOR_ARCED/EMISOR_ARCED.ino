@@ -112,7 +112,7 @@ uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[120];
 //Identificate the emiter
 uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
-#define NUMBER_NODES 7
+#define NUMBER_NODES 8
 
 String pg;
 char pgData[PG_MAX_LEN];
