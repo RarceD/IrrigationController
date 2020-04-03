@@ -112,27 +112,27 @@ void setup()
   flash.powerUp();
   flash.begin();
   // I have to change the flash info for each devise:
-  /*
-  sys.id = 8;
+ /*
+  sys.id = 10;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '1';
   sys.assigned_output[0] = 1;
   sys.assigned_output[1] = 2;
   sys.assigned_output[2] = 3;
   sys.assigned_output[3] = 4;
-  char ack[] = "##OK08##";
+  char ack[] = "##OK0A##";
   for (int i = 0; i < sizeof(ack); i++)
     sys.ack_msg[i] = ack[i]; 
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys);
-  */
+*/
   flash.readAnything(FLASH_SYS_DIR, sys);
   manager.init();
   driver.setPreambleLength(8);
   driver.setTxPower(TX_PWR, false);
   manager.setRetries(10); // I change this value but I don`t now what is the best
   // This value should be random for not overlapping
-  uint8_t time_retries = 120;
+  uint8_t time_retries = 122;
   manager.setTimeout(time_retries);
   SWire.begin();
   rtc.begin();

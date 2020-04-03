@@ -86,7 +86,7 @@ typedef enum
 typedef struct
 {
   bool clear;
-  bool oasis[8];
+  bool oasis[8][2];            //max ack to 16...
   uint8_t save_ack_pg_counter; //Every 5 minutes I update the PG info on screen
   uint8_t offset;
   uint32_t counter;
@@ -112,7 +112,7 @@ uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[120];
 //Identificate the emiter
 uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
-#define NUMBER_NODES 8
+#define NUMBER_NODES 10
 
 String pg;
 char pgData[PG_MAX_LEN];
@@ -203,40 +203,72 @@ void loop()
     ack.clear = true;
   }
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
-  if ((ack.clear && (millis() - ack.counter > 7000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  if ((ack.clear && (millis() - ack.counter > 5000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
     uint8_t buf_info[120];
     memcpy(buf_info, buf, sizeof(buf)); //copy the global and slow array to local and analize
     //Extract the info and save in bool buffer:
     for (uint8_t p = 0; p < 140; p++)
       if (buf_info[p] == 'K')
-        ack.oasis[(buf_info[p + 2] - '0') - 1] = true; //Save in a bool[] for later
+        if (hex2int(buf_info[p + 2]) <= 8)
+          ack.oasis[hex2int(buf_info[p + 2]) - 1][0] = true; //Save in a bool[] for later
+        else
+          ack.oasis[hex2int(buf_info[p + 2]) - 8 - 1][1] = true;
     //I send the commands to PG6011 in order to visualize the communication problems only 1 every 5 minutes
-    if (ack.save_ack_pg_counter > 4)
+    if (ack.save_ack_pg_counter > 5)
     {
       ack.save_ack_pg_counter = 0;
-      uint8_t oasis_number = 0, binary_index = 1;
+      uint8_t oasis_number_8 = 0, binary_index_8 = 1;
+      uint8_t oasis_number_16 = 0, binary_index_16 = 1;
       for (uint8_t a = 0; a < NUMBER_NODES; a++)
-      {
-        DPRINT(ack.oasis[a]);
-        if (!ack.oasis[a])
-          oasis_number += binary_index;
-        binary_index *= 2;
-        ack.oasis[a] = false; //I clear the variable for the next time
-      }
+        if (a < 8)
+        {
+          DPRINT(ack.oasis[a][0]);
+          if (!ack.oasis[a][0])
+            oasis_number_8 += binary_index_8;
+          binary_index_8 *= 2;
+          ack.oasis[a][0] = false; //I clear the variable for the next time
+        }
+        else
+        {
+          DPRINT(ack.oasis[a - 8][1]);
+          if (!ack.oasis[a - 8][1])
+            oasis_number_16 += binary_index_16;
+          binary_index_16 *= 2;
+          ack.oasis[a - 8][1] = false; //I clear the variable for the next time
+        }
+      DPRINTLN("_");
       //Writting in the PG memmory
-      String str_oasis_number = String(oasis_number, HEX);
+      DPRINTLN(oasis_number_8);
+      DPRINTLN(oasis_number_16);
+      DPRINTLN("_");
+
+      cmd_write_data[13] = '3';
+      cmd_write_data[14] = 'F';
+      String str_oasis_number = String(oasis_number_8, HEX);
       if (str_oasis_number.length() == 1)
         str_oasis_number = '0' + str_oasis_number;
       str_oasis_number.toUpperCase();
-      cmd_write_data[13] = '3';
-      cmd_write_data[14] = 'F';
       cmd_write_data[15] = '0';
       cmd_write_data[17] = str_oasis_number.charAt(0);
       cmd_write_data[18] = str_oasis_number.charAt(1);
       pgCommand(cmd_write_data, sizeof(cmd_write_data));
       for (i = 0; i < sizeof(cmd_write_data); i++)
         Serial.write(cmd_write_data[i]);
+      if (NUMBER_NODES > 8)
+      {
+        delay(800);
+        str_oasis_number = String(oasis_number_16, HEX);
+        if (str_oasis_number.length() == 1)
+          str_oasis_number = '0' + str_oasis_number;
+        str_oasis_number.toUpperCase();
+        cmd_write_data[15] = '1';
+        cmd_write_data[17] = str_oasis_number.charAt(0);
+        cmd_write_data[18] = str_oasis_number.charAt(1);
+        pgCommand(cmd_write_data, sizeof(cmd_write_data));
+        for (i = 0; i < sizeof(cmd_write_data); i++)
+          Serial.write(cmd_write_data[i]);
+      }
       DPRINT("SAVE RAM: ");
       DPRINTLN(freeRam());
     }
