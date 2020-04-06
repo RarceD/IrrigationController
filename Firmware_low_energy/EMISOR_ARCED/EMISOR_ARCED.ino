@@ -32,7 +32,7 @@
 #define CLIENT_ADDRESS 2
 #define SERVER_ADDRESS 1
 
-#define MAX_NODE_NUMBER 7
+#define MAX_NODE_NUMBER 4
 #define MAX_MANUAL_TIMERS 20
 #define MAX_NUM_MESSAGES 15
 #define UUID_LENGTH 16
@@ -202,9 +202,12 @@ void loop()
     if (!ack.clear)
       ack.counter = millis();
     ack.clear = true;
+    for (int i = 0; i < sizeof(buf); i++)
+      Serial.write(buf[i]);
+    delay(10)
   }
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
-  if ((ack.clear && (millis() - ack.counter > 10000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  if ((ack.clear && (millis() - ack.counter > 12000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
     uint8_t buf_info[120];
     memcpy(buf_info, buf, sizeof(buf)); //copy the global and slow array to local and analize
@@ -238,8 +241,8 @@ void loop()
           binary_index_16 *= 2;
           ack.oasis[a - 8][1] = false; //I clear the variable for the next time
         }
-      DPRINTLN("_");
       //Writting in the PG memmory
+      DPRINTLN("_");
       DPRINTLN(oasis_number_8);
       DPRINTLN(oasis_number_16);
       DPRINTLN("_");
@@ -338,8 +341,8 @@ void loop()
           data[i] = 'z';
         uint16_t index = 0; // This index is just for moving into the array
         data[index++] = '_';
-        if (rf_msg_tries < 2) // Only send time one time
-          send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
+        // if (rf_msg_tries < 2) // Only send time one time
+        send_nodo(index, UUID_1, REQUEST_TIME, 0, 0, 0, asignacion);
         for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++) //Introduce the messages in the data buffer
           if (radio_waitting_msg.request_MANUAL[msg])
             send_nodo(index, UUID_1, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);

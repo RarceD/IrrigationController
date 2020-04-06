@@ -64,6 +64,7 @@ typedef struct
   bool valves_on[4];
   bool secure_close; //If I do not receive msg from the emiter in 5 minutes I switch off all the valves
   bool just_one_time_awake_1_min;
+  bool send_ack; //When I lost connection for 20 minutes I do not send ack more
   uint8_t counter_secure_close;
 } valve_status;
 
@@ -141,9 +142,9 @@ void setup()
   manager.init();
   driver.setPreambleLength(8);
   driver.setTxPower(TX_PWR, false);
-  manager.setRetries(10); // I change this value but I don`t now what is the best
+  manager.setRetries(8); // I change this value but I don`t now what is the best
   // This value should be random for not overlapping
-  uint8_t time_retries = 122;
+  uint8_t time_retries = 120;
   manager.setTimeout(time_retries);
   SWire.begin();
   rtc.begin();
@@ -172,6 +173,7 @@ void setup()
   }
   v.counter_secure_close = DEAD_TIME_COUNTER;
   v.just_one_time_awake_1_min = true;
+  v.send_ack = true;
   DPRINTLN(freeRam());
 }
 /******************************************************************* main program  ************************************************************************************/
@@ -192,6 +194,7 @@ void loop()
       listen_master(); //When activity is detected listen the master
       DPRINTLN("ESPERA");
       MODE_AWAKE = false; //I go to sleep
+      v.send_ack = true; //Continmue sending the ack because I have not lost the communication
       v.counter_secure_close = DEAD_TIME_COUNTER;
       delay(500);
     }
@@ -232,21 +235,21 @@ void loop()
               {
                 uint8_t len = sizeof(buf);
                 manager.recvfromAck(buf, &len);
-                listen_master();    //When activity is detected listen the master
+                listen_master(); //When activity is detected listen the master
                 v.counter_secure_close = DEAD_TIME_COUNTER;
+                v.send_ack = true;
                 connected = true;
                 delay(500);
                 break;
               }
-    jam.ledBlink(LED_SETUP, 500);
-
+              jam.ledBlink(LED_SETUP, 100);
             }
             DPRINTLN("1 min done, I am lost");
             if (connected)
-              v.just_one_time_awake_1_min = true; 
+              v.just_one_time_awake_1_min = true;
             else
               v.just_one_time_awake_1_min = false; //THIS TRY JUST ONE TIME TO KEEP THE BATTERY ON
-            MODE_AWAKE = false;                   //I go to sleep
+            MODE_AWAKE = false;                    //I go to sleep
             intRtc = false;
           }
           v.counter_secure_close--;
@@ -260,6 +263,7 @@ void loop()
           for (uint8_t index = 0; index < 4; index++)
             if (v.valves_on[index])
               valveAction(index + 1, false); // Turn On or OFF a valve
+          v.send_ack = false;
         }
         to_sleep = false;
         MODE_AWAKE = false;
@@ -283,14 +287,15 @@ void loop()
         SEND_ACK = false;
         rtc.setAlarmMode(6);
         rtc.setAlarm(0, 0, 0, 0, 0);
-        send_master(ACK);
+        if (v.send_ack) //Only send if I have not lost the communication
+          send_master(ACK);
         DPRINTLN("ACK MODE");
       }
       else //The oasis has to listen and execute the rf commands
       {
         MODE_AWAKE = true;
         rtc.setAlarmMode(6);
-        rtc.setAlarm(30, 0, 0, 0, 0);
+        rtc.setAlarm(30 + sys.id - 1, 0, 0, 0, 0);
         DPRINTLN("AWAKE MODE");
         millix = millis();
       }
@@ -652,6 +657,7 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
   currentTime[7] = rtc.DECtoBCD(0);
   rtc.setTime(currentTime, TIME_ARRAY_LENGTH);
   DPRINTLN("TIME CHANGE");
+  DPRINTLN(freeRam());
   // DPRINT(rtc.stringDate());
   // DPRINT(" ");
   // DPRINTLN(rtc.stringTime());
