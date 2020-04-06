@@ -112,7 +112,7 @@ uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[120];
 //Identificate the emiter
 uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
-#define NUMBER_NODES 10
+#define NUMBER_NODES 11
 
 String pg;
 char pgData[PG_MAX_LEN];
@@ -199,11 +199,12 @@ void loop()
     uint8_t len = sizeof(buf);
     manager.recvfromAck(buf + ack.offset, &len); //Save all the info received in buff for later analize
     ack.offset += len;                           //increse the pointer in the buffer for not overlapping the msg
-    ack.counter = millis();
+    if (!ack.clear)
+      ack.counter = millis();
     ack.clear = true;
   }
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
-  if ((ack.clear && (millis() - ack.counter > 5000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  if ((ack.clear && (millis() - ack.counter > 10000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
     uint8_t buf_info[120];
     memcpy(buf_info, buf, sizeof(buf)); //copy the global and slow array to local and analize

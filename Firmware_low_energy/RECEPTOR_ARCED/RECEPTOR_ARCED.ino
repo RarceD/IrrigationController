@@ -33,7 +33,12 @@
 #define CLIENT_ADDRESS 2
 #define SERVER_ADDRESS 1
 
+#define DEAD_TIME_COUNTER 5  //if I lose 20 packets I am dead and I close all the valves I have
+#define AWAKE_TIME_COUNTER 2 //if I do not receive 3 packets I awake 1 minute compleat just one time
+#define AWAKE_TIME_PER_MIN 2000
+
 #define FLASH_SYS_DIR 0x040400
+
 typedef enum
 {
   MANVAL_MSG = 'M',
@@ -54,9 +59,17 @@ typedef struct
   uint8_t master_id[2];
   uint8_t ack_msg[8];
 } sysVar;
+typedef struct
+{
+  bool valves_on[4];
+  bool secure_close; //If I do not receive msg from the emiter in 5 minutes I switch off all the valves
+  bool just_one_time_awake_1_min;
+  uint8_t counter_secure_close;
+} valve_status;
 
 Jam jam;
 sysVar sys;
+valve_status v;
 RV1805 rtc;
 Sleep lowPower;
 //SimpleTimer timer_manual_valve_1, timer_manual_valve_2, timer_manual_valve_3, timer_manual_valve_4;
@@ -68,13 +81,12 @@ RHReliableDatagram manager(driver, CLIENT_ADDRESS);
 volatile bool intButton, intRtc, Global_Flag_int;
 uint16_t Set_Vshot = 600;
 uint8_t iOpen = 0, valveOpened[4];
-uint8_t i, j;
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN];
-uint8_t data_size, buf[RH_RF95_MAX_MESSAGE_LEN];
+uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+
 bool to_sleep;
-//uint32_t currentTime, millix;
-// int timer_manual_1, timer_manual_2, timer_manual_3, timer_manual_4;
-// uint32_t start = 0;
+bool MODE_AWAKE;
+bool SEND_ACK;
 
 /******************************************************************* setup section ************************************************************************************/
 uint32_t millix;
@@ -82,7 +94,6 @@ uint32_t millix;
 bool first_start_syn = true;
 void setup()
 {
-
 #ifdef DEBUG_ON
   Serial.begin(115200);
 #endif
@@ -112,20 +123,20 @@ void setup()
   flash.powerUp();
   flash.begin();
   // I have to change the flash info for each devise:
- /*
-  sys.id = 10;
+  /*
+  sys.id = 1;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '1';
   sys.assigned_output[0] = 1;
   sys.assigned_output[1] = 2;
   sys.assigned_output[2] = 3;
   sys.assigned_output[3] = 4;
-  char ack[] = "##OK0A##";
+  char ack[] = "##OK01##";
   for (int i = 0; i < sizeof(ack); i++)
     sys.ack_msg[i] = ack[i]; 
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys);
-*/
+  */
   flash.readAnything(FLASH_SYS_DIR, sys);
   manager.init();
   driver.setPreambleLength(8);
@@ -152,11 +163,18 @@ void setup()
   DPRINT(F(" "));
   DPRINTLN(rtc.stringTime());
   print_flash();
-  delay(100);
+  //First of all close all the valves just in case:
+  for (uint8_t index = 0; index < 4; index++)
+  {
+    v.valves_on[index] = false;
+    // valveAction(index + 1, v.valves_on[index]); // Turn On or OFF a valve
+    delay(1000);
+  }
+  v.counter_secure_close = DEAD_TIME_COUNTER;
+  v.just_one_time_awake_1_min = true;
+  DPRINTLN(freeRam());
 }
 /******************************************************************* main program  ************************************************************************************/
-bool MODE_AWAKE;
-bool SEND_ACK;
 
 void loop()
 {
@@ -173,6 +191,8 @@ void loop()
       manager.recvfromAck(buf, &len);
       listen_master(); //When activity is detected listen the master
       DPRINTLN("ESPERA");
+      MODE_AWAKE = false; //I go to sleep
+      v.counter_secure_close = DEAD_TIME_COUNTER;
       delay(500);
     }
     jam.ledBlink(LED_SETUP, 500);
@@ -190,15 +210,57 @@ void loop()
         to_sleep = true;
         //for (int i = 0; i < sizeof(buf); i++)
         //  Serial.write(buf[i]);
-        //DPRINTLN(" ");
+        v.just_one_time_awake_1_min = true;
+        v.counter_secure_close = DEAD_TIME_COUNTER;
         delay(10);
-        // I set a timer for sendding the ACK to master
       }
-      if (millis() - millix >= 2000 || to_sleep) // It is awake for 2 seconds
+      if (millis() - millix >= AWAKE_TIME_PER_MIN || to_sleep) // It is awake for 2 seconds
       {
         DPRINTLN(" A dormir");
-        // for (uint8_t clear = 0; clear < sizeof(buf); clear++)
-        // buf[clear] = 'z';
+        //The oasis has lost the radio wave and the sync and I close just in case I flood something
+        if (v.counter_secure_close >= 1)
+        {
+          //If I lost connection for 3 min I awakae for 1 min and then everithing the sme
+          if (v.counter_secure_close == DEAD_TIME_COUNTER - AWAKE_TIME_COUNTER && v.just_one_time_awake_1_min)
+          {
+            DPRINTLN("I AM LOST AND I AWAKE FOR 1 MIN");
+            uint64_t millix_awake_for_1_min = millis();
+            bool connected = false;
+            while (millis() - millix_awake_for_1_min <= 60000) //In case I have not receive a packet in 3 min
+            {
+              if (manager.available()) // Detect radio activity and set a timer for waking up at 00
+              {
+                uint8_t len = sizeof(buf);
+                manager.recvfromAck(buf, &len);
+                listen_master();    //When activity is detected listen the master
+                v.counter_secure_close = DEAD_TIME_COUNTER;
+                connected = true;
+                delay(500);
+                break;
+              }
+    jam.ledBlink(LED_SETUP, 500);
+
+            }
+            DPRINTLN("1 min done, I am lost");
+            if (connected)
+              v.just_one_time_awake_1_min = true; 
+            else
+              v.just_one_time_awake_1_min = false; //THIS TRY JUST ONE TIME TO KEEP THE BATTERY ON
+            MODE_AWAKE = false;                   //I go to sleep
+            intRtc = false;
+          }
+          v.counter_secure_close--;
+        }
+        else
+        {
+          //When the counter == 0;
+          //If I have not connected in 20 times I just close all the valves that are open
+          DPRINTLN("I CLOSE ALL THE VALVES BECAUSE I'VE NOT RECEIVED IN 20 MIN");
+          v.counter_secure_close = DEAD_TIME_COUNTER;
+          for (uint8_t index = 0; index < 4; index++)
+            if (v.valves_on[index])
+              valveAction(index + 1, false); // Turn On or OFF a valve
+        }
         to_sleep = false;
         MODE_AWAKE = false;
         SEND_ACK = true;
@@ -415,8 +477,6 @@ void listen_master() // Listen and actuate in consideration
   // I execute all the actions saved in the buffer start_msg_letter[]
   while (index_start_msg > 0)
   {
-    //Serial.print("The letter of the msg is: ");
-    //Serial.write(buf[start_msg_letter[index_start_msg - 1]]);
     switch (buf[start_msg_letter[--index_start_msg]])
     {
     case MANVAL_MSG:
@@ -424,8 +484,6 @@ void listen_master() // Listen and actuate in consideration
       DPRINTLN("VALVE ACTION");
       //##MANVAL#002#00:10#A1#MAN
       //--012345678901234567890123456
-      Serial.write(buf[start_msg_letter[index_start_msg] + 7]);
-      Serial.write(buf[start_msg_letter[index_start_msg] + 9]);
       DPRINTLN("");
 
       if (buf[start_msg_letter[index_start_msg] + 17] == sys.master_id[0] && buf[start_msg_letter[index_start_msg] + 18])
@@ -442,16 +500,23 @@ void listen_master() // Listen and actuate in consideration
         DPRINTLN(valve_time_minutes);
 
         for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
-        {
           if (sys.assigned_output[i] == valve_action)
-          {
-            DPRINTLN("This valve is in my options ");
             if (valve_time_hours == 0 && valve_time_minutes == 0)
-              valveAction(i + 1, false);
+            { //I close the valve
+              if (v.valves_on[i])
+              {
+                v.valves_on[i] = false;
+                valveAction(i + 1, false);
+              }
+            }
             else
-              valveAction(i + 1, true);
-          }
-        }
+            { //I open the valve
+              if (!v.valves_on[i])
+              {
+                valveAction(i + 1, true);
+                v.valves_on[i] = true;
+              }
+            }
       }
       break;
     }
@@ -539,13 +604,12 @@ void listen_master() // Listen and actuate in consideration
       buffer_index = start_msg_letter[index_start_msg];
       if (buf[buffer_index + 9] == sys.master_id[0] && buf[buffer_index + 10] == sys.master_id[1])
       {
-        valveAction(1, false);
-        delay(1200);
-        valveAction(2, false);
-        delay(1200);
-        valveAction(3, false);
-        delay(1200);
-        valveAction(4, false);
+        for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
+          if (v.valves_on[i])
+          {
+            v.valves_on[i] = false;
+            valveAction(i + 1, false);
+          }
       }
       else
       {
@@ -575,7 +639,6 @@ void send_master(uint8_t msg) // I just have to send the flash info for getting 
 }
 void change_time(int hours, int minutes, int day, int month, int seconds, int year)
 {
-
   rtc.set24Hour();
   first_start_syn = false;
   uint8_t currentTime[8];
@@ -634,4 +697,10 @@ void print_flash()
   for (int i = 0; i < sizeof(sys.ack_msg); i++)
     Serial.write(sys.ack_msg[i]);
   DPRINTLN(" ");
+}
+int freeRam()
+{
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
