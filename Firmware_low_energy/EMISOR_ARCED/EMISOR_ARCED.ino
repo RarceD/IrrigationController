@@ -112,7 +112,7 @@ uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[120];
 //Identificate the emiter
 uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
-#define NUMBER_NODES 11
+#define NUMBER_NODES 4
 
 String pg;
 char pgData[PG_MAX_LEN];
@@ -168,13 +168,29 @@ void setup()
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
   //rtc.setToCompilerTime();
+  /*
+  int hund = 50;
+  int sec = 2;
+  int minute = 36;
+  int hour = 8;
+  int date = 7;
+  int month = 4;
+  int year = 20;
+  int day = 2;
+  rtc.setTime(hund, sec, minute, hour, date, month, year, day);
   rtc.setAlarmMode(6);
+  */
   rtc.setAlarm(55, 0, 0, 0, 0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
   DPRINTLN(rtc.stringTime());
   DPRINTLN(rtc.stringDate());
-  change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
+  uint8_t day_week_pg = 0;
+  if (rtc.getWeekday() == 0)
+    day_week_pg = 7;
+  else
+    day_week_pg = rtc.getWeekday();
+  change_time_pg(day_week_pg, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
   jam.ledBlink(LED_SETUP, 1000);
   timer_check = timerCheck.setInterval(20000, check_time);
   radio_waitting_msg.num_message_flags = 0;
@@ -190,6 +206,7 @@ void setup()
   }
   DPRINT("SAVE RAM: ");
   DPRINTLN(freeRam());
+  DPRINTLN(rtc.getWeekday());
 }
 void loop()
 {
@@ -202,13 +219,13 @@ void loop()
     if (!ack.clear)
       ack.counter = millis();
     ack.clear = true;
-    for (int i = 0; i < sizeof(buf); i++)
-      Serial.write(buf[i]);
-    delay(10)
+    delay(10);
   }
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
   if ((ack.clear && (millis() - ack.counter > 12000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
+    for (int i = 0; i < sizeof(buf); i++)
+      Serial.write(buf[i]);
     uint8_t buf_info[120];
     memcpy(buf_info, buf, sizeof(buf)); //copy the global and slow array to local and analize
     //Extract the info and save in bool buffer:
@@ -246,7 +263,6 @@ void loop()
       DPRINTLN(oasis_number_8);
       DPRINTLN(oasis_number_16);
       DPRINTLN("_");
-
       cmd_write_data[13] = '3';
       cmd_write_data[14] = 'F';
       String str_oasis_number = String(oasis_number_8, HEX);
@@ -1281,6 +1297,10 @@ void listening_pg()
       start_programD = false;
       start_programD_ones = false;
       radio_waitting_msg.request_STOP_ALL[radio_waitting_msg.num_message_flags++] = true;
+    }
+    else if (pg.indexOf("MEMMORY#") > 0)
+    {
+      getAllFromPG();
     }
   }
 }
