@@ -1,7 +1,7 @@
 #include <JamAtm-Vyrsa.h>
 #include <SimpleTimer.h>
 #include <SoftwareSerial.h>
-#include <JamSleep.h>
+// #include <JamSleep.h>
 
 #define DEBUG_ON
 #ifdef DEBUG_ON
@@ -111,7 +111,7 @@ RHReliableDatagram manager(driver, SERVER_ADDRESS);
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[120];
 //Identificate the emiter
-uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
+uint8_t UUID_1[] = {'A', '2'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
 #define NUMBER_NODES 4
 
 String pg;
@@ -178,8 +178,8 @@ void setup()
   int year = 20;
   int day = 2;
   rtc.setTime(hund, sec, minute, hour, date, month, year, day);
-  rtc.setAlarmMode(6);
   */
+  rtc.setAlarmMode(6);
   rtc.setAlarm(55, 0, 0, 0, 0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();

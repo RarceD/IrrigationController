@@ -194,7 +194,7 @@ void loop()
       listen_master(); //When activity is detected listen the master
       DPRINTLN("ESPERA");
       MODE_AWAKE = false; //I go to sleep
-      v.send_ack = true; //Continmue sending the ack because I have not lost the communication
+      v.send_ack = true;  //Continmue sending the ack because I have not lost the communication
       v.counter_secure_close = DEAD_TIME_COUNTER;
       delay(500);
     }
@@ -474,9 +474,14 @@ void listen_master() // Listen and actuate in consideration
   // I first find the number of msg and the position of the first letter of them
   // I save them on start_msg_letter[]
   for (int i = 0; i < sizeof(buf); i++)
+  {
     if (buf[i] == '#')
       if (buf[i + 1] == '#')
         start_msg_letter[index_start_msg++] = i + 2; // I find the number of messages in the buffer and also the position of start
+    if (buf[i] == 'z')
+      if (buf[i + 1] == 'z')
+        break;
+  }
   bool is_for_me = false;
   uint8_t buffer_index = 0; // This variable is for offset what I am doing
   // I execute all the actions saved in the buffer start_msg_letter[]
@@ -491,7 +496,7 @@ void listen_master() // Listen and actuate in consideration
       //--012345678901234567890123456
       DPRINTLN("");
 
-      if (buf[start_msg_letter[index_start_msg] + 17] == sys.master_id[0] && buf[start_msg_letter[index_start_msg] + 18])
+      if (buf[start_msg_letter[index_start_msg] + 17] == sys.master_id[0] && buf[start_msg_letter[index_start_msg] + 18] == sys.master_id[1])
       {
         buffer_index = start_msg_letter[index_start_msg] + 7;
         uint8_t valve_action = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0');
