@@ -1360,82 +1360,90 @@ void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes, uint8_t second
 void check_time() // This function test if the current time fix with the program time
 {
   rtc.updateTime();
+  uint8_t rtc_value = rtc.getWeekday();
+  uint8_t value_to_AND=0;
   for (uint8_t index_program = 0; index_program < 6; index_program++)
-    for (uint8_t index_time_h = 0; index_time_h < 6; index_time_h++)
-      if (prog[index_program].start[index_time_h][0] == rtc.getHours())
-        if (prog[index_program].start[index_time_h][1] == rtc.getMinutes())
-        {
-          DPRINTLN("ES LA HORA BUENA");
-          switch (index_program)
+  {
+    if (rtc_value == 0)
+      rtc_value = 7;
+    value_to_AND = pow(2, rtc_value - 1);
+    if (prog[index_program].wateringDay & value_to_AND)
+      for (uint8_t index_time_h = 0; index_time_h < 6; index_time_h++)
+        if (prog[index_program].start[index_time_h][0] == rtc.getHours())
+          if (prog[index_program].start[index_time_h][1] == rtc.getMinutes())
           {
-          case 0:
-            if (!start_programA_ones)
+            DPRINTLN("ES LA HORA BUENA");
+            switch (index_program)
             {
-              DPRINTLN("Encender programa A");
-              start_programA = true;
-              start_programA_ones = true;
+            case 0:
+              if (!start_programA_ones)
+              {
+                DPRINTLN("Encender programa A");
+                start_programA = true;
+                start_programA_ones = true;
+              }
+              else
+                DPRINTLN("Ya encendido el programa A");
+              break;
+            case 1:
+              if (!start_programB_ones)
+              {
+                DPRINTLN("Encender programa B");
+                start_programB = true;
+                start_programB_ones = true;
+              }
+              else
+                DPRINTLN("Ya encendido el programa B");
+              break;
+            case 2:
+              if (!start_programC_ones)
+              {
+                DPRINTLN("Encender programa C");
+                start_programC = true;
+                start_programC_ones = true;
+              }
+              else
+                DPRINTLN("Ya encendido el programa C");
+              break;
+            case 3:
+              if (!start_programD_ones)
+              {
+                DPRINTLN("Encender programa D");
+                start_programD = true;
+                start_programD_ones = true;
+                //timerCheck.deleteTimer(timer_check);
+              }
+              else
+                DPRINTLN("Ya encendido el programa D");
+              break;
+            case 4:
+              if (!start_programE_ones)
+              {
+                DPRINTLN("Encender programa E");
+                start_programE = true;
+                start_programE_ones = true;
+                //timerCheck.deleteTimer(timer_check);
+              }
+              else
+                DPRINTLN("Ya encendido el programa E");
+              break;
+            case 5:
+              if (!start_programF_ones)
+              {
+                DPRINTLN("Encender programa F");
+                start_programF = true;
+                start_programF_ones = true;
+                //timerCheck.deleteTimer(timer_check);
+              }
+              else
+                DPRINTLN("Ya encendido el programa F");
+              break;
+            default:
+              DPRINTLN("never");
+              break;
             }
-            else
-              DPRINTLN("Ya encendido el programa A");
-            break;
-          case 1:
-            if (!start_programB_ones)
-            {
-              DPRINTLN("Encender programa B");
-              start_programB = true;
-              start_programB_ones = true;
-            }
-            else
-              DPRINTLN("Ya encendido el programa B");
-            break;
-          case 2:
-            if (!start_programC_ones)
-            {
-              DPRINTLN("Encender programa C");
-              start_programC = true;
-              start_programC_ones = true;
-            }
-            else
-              DPRINTLN("Ya encendido el programa C");
-            break;
-          case 3:
-            if (!start_programD_ones)
-            {
-              DPRINTLN("Encender programa D");
-              start_programD = true;
-              start_programD_ones = true;
-              //timerCheck.deleteTimer(timer_check);
-            }
-            else
-              DPRINTLN("Ya encendido el programa D");
-            break;
-          case 4:
-            if (!start_programE_ones)
-            {
-              DPRINTLN("Encender programa E");
-              start_programE = true;
-              start_programE_ones = true;
-              //timerCheck.deleteTimer(timer_check);
-            }
-            else
-              DPRINTLN("Ya encendido el programa E");
-            break;
-          case 5:
-            if (!start_programF_ones)
-            {
-              DPRINTLN("Encender programa F");
-              start_programF = true;
-              start_programF_ones = true;
-              //timerCheck.deleteTimer(timer_check);
-            }
-            else
-              DPRINTLN("Ya encendido el programa F");
-            break;
-          default:
-            DPRINTLN("never");
-            break;
           }
-        }
+  }
   // check if the hours are fix and we can start a program
 }
 void waitValveCloseA()
