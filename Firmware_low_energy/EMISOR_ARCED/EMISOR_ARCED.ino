@@ -183,14 +183,15 @@ void setup()
   rtc.setAlarm(55, 0, 0, 0, 0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
-  DPRINTLN(rtc.stringTime());
+  DPRINT(rtc.stringTime());
+  DPRINT(" ");
   DPRINTLN(rtc.stringDate());
   uint8_t day_week_pg = 0;
   if (rtc.getWeekday() == 0)
     day_week_pg = 7;
   else
     day_week_pg = rtc.getWeekday();
-  change_time_pg(day_week_pg, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
+  change_time_pg(rtc.getYear(),rtc.getMonth(),rtc.getDate(),day_week_pg, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
   jam.ledBlink(LED_SETUP, 1000);
   timer_check = timerCheck.setInterval(20000, check_time);
   radio_waitting_msg.num_message_flags = 0;
@@ -204,9 +205,6 @@ void setup()
     radio_waitting_msg.request_STOP_ALL[msg] = false;
     radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
   }
-  DPRINT("SAVE RAM: ");
-  DPRINTLN(freeRam());
-  DPRINTLN(rtc.getWeekday());
 }
 void loop()
 {
@@ -1332,7 +1330,7 @@ void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
   intRtc = true; //set flag to indicate that rtc interrupt was triggered
 }
-void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes, uint8_t seconds) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
+void change_time_pg(uint8_t year,uint8_t month, uint8_t day, uint8_t week, uint8_t hours, uint8_t minutes, uint8_t seconds) //, uint8_t *day, uint8_t *hours, uint8_t *minutes)
 {
   //First set the week of the day
   cmd_set_time[19] = week + '0';
@@ -1356,12 +1354,41 @@ void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes, uint8_t second
   cmd_set_time[16] = time.charAt(1);
   jam.calcrc((char *)cmd_set_time, sizeof(cmd_set_time) - 2);
   softSerial.write(cmd_set_time, sizeof(cmd_set_time)); //real send to PG
+  delay(1000);
+  time = String(month,HEX);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = '4';
+  cmd_write_data[15] = '1';
+  cmd_write_data[17] = time.charAt(0);
+  cmd_write_data[18] = time.charAt(1);
+  jam.calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+  delay(1000);
+  time = String(day,HEX);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_write_data[15] = '2';
+  cmd_write_data[17] = time.charAt(0);
+  cmd_write_data[18] = time.charAt(1);
+  jam.calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+    delay(1000);
+  time = String(year,HEX);
+  if (time.length() == 1)
+    time = '0' + time;
+  cmd_write_data[15] = '0';
+  cmd_write_data[17] = time.charAt(0);
+  cmd_write_data[18] = time.charAt(1);
+  jam.calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
 }
 void check_time() // This function test if the current time fix with the program time
 {
   rtc.updateTime();
   uint8_t rtc_value = rtc.getWeekday();
-  uint8_t value_to_AND=0;
+  uint8_t value_to_AND = 0;
   for (uint8_t index_program = 0; index_program < 6; index_program++)
   {
     if (rtc_value == 0)

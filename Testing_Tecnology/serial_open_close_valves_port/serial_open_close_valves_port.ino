@@ -14,7 +14,7 @@ static uint8_t cmd_set_time[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'T', 'I', 'M', 
 
 // static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', '4', '8', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', '4', '0', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
@@ -173,7 +173,7 @@ void loop()
     if (a == 103) // PRess G to change time of PG
     {
       // change_time_pg(rtc.getYear(), rtc.getMonth(), rtc.getDate(),rtc.getWeekday(), rtc.getHours(),rtc.getMinutes()); //year/month/week/day/hour/min
-      change_time_pg(1, 9, 39); //year/month/week/day/hour/min
+      change_time_pg(1, 9, 1); //year/month/week/day/hour/min
     }
     if (a == 104) //press H
     {
@@ -441,6 +441,16 @@ void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes) //, uint8_t *d
   softSerial.write(cmd_set_time, sizeof(cmd_set_time)); //real send to PG
   for (i = 0; i < sizeof(cmd_set_time); i++)
     Serial.write(cmd_set_time[i]);
+  delay(1000);
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = '4';
+  cmd_write_data[15] = '2';
+  cmd_write_data[17] = '0';
+  cmd_write_data[18] = '5';
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+    for (i = 0; i < sizeof(cmd_write_data); i++)
+    Serial.write(cmd_write_data[i]);
 }
 void change_week_pg(char *date, uint8_t lenght, uint8_t program)
 {
