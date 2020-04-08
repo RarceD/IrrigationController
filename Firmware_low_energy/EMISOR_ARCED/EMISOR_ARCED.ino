@@ -120,7 +120,7 @@ SoftwareSerial softSerial(PG_RXD, PG_TXD);
 RH_RF95 driver(CS_RF, INT_RF);
 RHReliableDatagram manager(driver, SERVER_ADDRESS);
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
-uint8_t buf[200];
+uint8_t buf[120];
 //Identificate the emiter
 
 String pg;
@@ -174,7 +174,6 @@ void setup()
   flash.writeAnything(FLASH_SYS_DIR, sys_rf);
   */
   flash.readAnything(FLASH_SYS_DIR, sys_rf);
-
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   manager.init();
@@ -186,12 +185,12 @@ void setup()
   rtc.set24Hour();
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
-  //rtc.setToCompilerTime();
+  // rtc.setToCompilerTime();
   /*
   int hund = 50;
   int sec = 2;
-  int minute = 36;
-  int hour = 8;
+  int minute = 9;
+  int hour = 17;
   int date = 7;
   int month = 4;
   int year = 20;
@@ -433,7 +432,6 @@ void loop()
       radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = index_prog_A + 1;
       radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = hours_temp;
       radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = min_temp;
-      //send_nodo(1, sys_rf.UUID_RF, REQUEST_MANVAL, index_prog_A + 1, hours_temp, min_temp, asignacion);
       start_programA = false;
     }
     else
@@ -473,8 +471,6 @@ void loop()
       radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = index_prog_B + 1;
       radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = hours_temp;
       radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = min_temp;
-
-      //send_nodo(1, sys_rf.UUID_RF, REQUEST_MANVAL, index_prog_B + 1, hours_temp, min_temp, asignacion);
       start_programB = false;
     }
     else
@@ -515,8 +511,6 @@ void loop()
       radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = index_prog_C + 1;
       radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = hours_temp;
       radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = min_temp;
-
-      //send_nodo(1, sys_rf.UUID_RF, REQUEST_MANVAL, index_prog_C + 1, hours_temp, min_temp, asignacion);
       start_programC = false;
     }
     else
@@ -527,7 +521,6 @@ void loop()
       timerC.deleteTimer(timer_C);
       start_programC = false;
       start_programC_ones = false;
-
       DPRINTLN("TODO HA ACABADO YA - C");
     }
   }
@@ -558,7 +551,6 @@ void loop()
       radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = index_prog_D + 1;
       radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = hours_temp;
       radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags] = min_temp;
-
       start_programD = false;
     }
     else
@@ -569,7 +561,6 @@ void loop()
       timerD.deleteTimer(timer_D);
       start_programD = false;
       start_programD_ones = false;
-
       DPRINTLN("TODO HA ACABADO YA - D");
     }
   }
@@ -1141,7 +1132,6 @@ void listening_pg()
     pg = String(pgData); //convert message received into string
     DPRINT("PG: ");
     DPRINTLN(pg);
-    // MANVALV START#01#0100#⸮&
     pg_interact_while_radio = true;
     if (pg.indexOf("MANVALV START") > 0)
     {

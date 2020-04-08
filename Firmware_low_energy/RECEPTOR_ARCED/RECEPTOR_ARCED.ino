@@ -30,8 +30,8 @@
 /******************************************************************* declarations  ************************************************************************************/
 
 #define TX_PWR 20
-#define CLIENT_ADDRESS 2
-#define SERVER_ADDRESS 1
+#define CLIENT_ADDRESS 4
+#define SERVER_ADDRESS 3
 
 #define DEAD_TIME_COUNTER 5  //if I lose 20 packets I am dead and I close all the valves I have
 #define AWAKE_TIME_COUNTER 2 //if I do not receive 3 packets I awake 1 minute compleat just one time
@@ -124,20 +124,20 @@ void setup()
   flash.powerUp();
   flash.begin();
   // I have to change the flash info for each devise:
-  /*
-  sys.id = 1;
+ /*
+  sys.id = 2;
   sys.master_id[0] = 'A';
-  sys.master_id[1] = '1';
+  sys.master_id[1] = '3';
   sys.assigned_output[0] = 1;
   sys.assigned_output[1] = 2;
   sys.assigned_output[2] = 3;
   sys.assigned_output[3] = 4;
-  char ack[] = "##OK01##";
+  char ack[] = "##OK02##";
   for (int i = 0; i < sizeof(ack); i++)
     sys.ack_msg[i] = ack[i]; 
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys);
-  */
+*/
   flash.readAnything(FLASH_SYS_DIR, sys);
   manager.init();
   driver.setPreambleLength(8);
