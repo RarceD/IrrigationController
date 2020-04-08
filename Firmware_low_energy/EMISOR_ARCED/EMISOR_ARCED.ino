@@ -32,7 +32,7 @@
 #define CLIENT_ADDRESS 2
 #define SERVER_ADDRESS 1
 
-#define FLASH_SYS_DIR 0x040400
+#define FLASH_SYS_DIR 0x044000
 
 #define MAX_NODE_NUMBER 4
 #define MAX_MANUAL_TIMERS 20
@@ -164,6 +164,7 @@ void setup()
   softSerial.begin(9600);
   flash.powerUp();
   flash.begin();
+  delay(10);
   /*
   //This have to be change manually 
   sys_rf.UUID_RF[0] = 'A';
@@ -342,10 +343,13 @@ void loop()
   */
   if (!digitalRead(PCINT_PIN)) //If pressed the button I save all PG info in flash
   {
-    digitalWrite(LED_SETUP, HIGH);
+    // digitalWrite(LED_SETUP, HIGH);
     DPRINTLN("BUTTON PRESSED");
+    DPRINTLN(freeRam());
     getAllFromPG();
-    digitalWrite(LED_SETUP, LOW);
+    DPRINTLN(freeRam());
+
+    // digitalWrite(LED_SETUP, LOW);
   }
   if (intRtc) // I wake up at 58 seconds just for 10 seconds
   {
@@ -1068,7 +1072,7 @@ void getAllFromPG() //this function get all data from PG
   digitalWrite(CS_RF, HIGH);
   flash.eraseSector(SYS_VAR_ADDR);
   flash.writeByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
-  ;
+  delay(10);
   digitalWrite(CS_RF, LOW);
 }
 void pgCommand(uint8_t command[], uint8_t len)
