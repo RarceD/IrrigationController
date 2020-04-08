@@ -29,11 +29,10 @@
 #define PCPIN *portInputRegister(digitalPinToPort(PCINT_PIN))
 
 #define TX_PWR 20
-#define CLIENT_ADDRESS 4
-#define SERVER_ADDRESS 3
+#define CLIENT_ADDRESS 2
+#define SERVER_ADDRESS 1
 
 #define FLASH_SYS_DIR 0x040400
-
 
 #define MAX_NODE_NUMBER 4
 #define MAX_MANUAL_TIMERS 20
@@ -168,7 +167,7 @@ void setup()
   /*
   //This have to be change manually 
   sys_rf.UUID_RF[0] = 'A';
-  sys_rf.UUID_RF[1] = '2';
+  sys_rf.UUID_RF[1] = '1';
   sys_rf.NUMBER_NODES = 4;
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys_rf);
@@ -1308,7 +1307,10 @@ void listening_pg()
     }
     else if (pg.indexOf("MEMMORY#") > 0)
     {
+      digitalWrite(LED_SETUP, HIGH);
+      DPRINTLN("PG TOUCH");
       getAllFromPG();
+      digitalWrite(LED_SETUP, LOW);
     }
   }
 }
