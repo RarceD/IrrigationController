@@ -127,7 +127,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   /*
-  char first_mem[] = "uuid_prueba_1_10";
+  char first_mem[] = "VYR_OASIS_A1";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
@@ -162,7 +162,8 @@ void setup()
 
   //At re-starting the pg is going to read all the info and send it to the web
   Serial.println("Sendding to app---");
-  //getAllFromPG(); // Have no idea why i can't do both at the same time
+  DPRINTLN(freeRam());
+  // getAllFromPG(); // Have no idea why i can't do both at the same time
   // json_connect_app(); //for sendding to the web that everithing is ok
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
@@ -170,6 +171,8 @@ void setup()
   // json_valve_action(false, 3, 0, 5);
   // delay(500);
   // json_program_action(false, 'B');
+
+  Serial.println("Finish sending---");
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -183,7 +186,7 @@ void loop()
     delay(5);
   }
   // Every 20 seconds I publish that I am ALIVE
-  if (millis() - millix >= 20000) // Printing that I am not dead
+  if (millis() - millix >= 30000) // Printing that I am not dead
   {
     uint16_t b, c;
     analogReference(INTERNAL);
@@ -199,12 +202,14 @@ void loop()
       delay(1);
     }
     float bat = b * 0.0190 - 2.0;
-    char json[100];
-    DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
+    char json[40];
+    DynamicJsonBuffer jsonBuffer(32);
     JsonObject &root = jsonBuffer.createObject();
     root.set("voltage", bat);
+    root.set("freeRam", freeRam());
     root.printTo(json);
     mqttClient.publish((String(sys.devUuid) + "/uptime").c_str(), (const uint8_t *)json, strlen(json), false);
+    DPRINTLN(freeRam());
     millix = millis();
   }
   if (!digitalRead(PCINT_PIN)) //If pressed the button syn with the web
@@ -219,24 +224,19 @@ void loop()
       pressed_times = false;
       Serial.println("BUTTON PRESSED");
       delay(500);
-      Serial.println("VENGA que solo son los inicios");
+      DPRINTLN(freeRam());
+      getAllFromPG();
       for (int i = 0; i < 6; i++)
       {
         json_clear_starts(i);
-        delay(500);
+        delay(50);
         json_week_days(i, prog[i].wateringDay);
-        delay(500);
+        delay(50);
         json_program_starts(i);
-        delay(500);
-        json_program_valves(i);
-        delay(500);
+        delay(50);
       }
+      DPRINTLN(freeRam());
     }
-
-    //delay(5000);
-    //Serial.println("VENGA que solo queda el B");
-    //// json_program(1);
-    //delay(500);
   }
 }
 /*******************************************************************   functions     ************************************************************************************/
@@ -416,7 +416,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           LOG(", ");
         }
         LOGLN("");
-        change_oasis_assigned(ide[oasis_num] , assigned_id);
+        change_oasis_assigned(ide[oasis_num], assigned_id);
       }
 
       send_web("/oasis", sizeof("/oasis"), identifier);
@@ -607,24 +607,24 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     {
       send_web("/general", sizeof("/general"), identifier);
     }
-        else if (sTopic.indexOf("stop") != -1) //nothing to do here
+    else if (sTopic.indexOf("stop") != -1) //nothing to do here
     {
       send_web("/stop", sizeof("/stop"), identifier);
     }
   }
+  DPRINTLN(freeRam());
+
 }
 void send_web(char *topic, unsigned int length, int id)
 {
   String ack_topic = String(topic);
   String identifier = String(id);
-  char json[100];
-
-  DynamicJsonBuffer jsonBuffer(100);
+  char json[40];
+  DynamicJsonBuffer jsonBuffer(27);
   JsonObject &root = jsonBuffer.createObject();
   root.set("id", identifier);
   root.set("success", "true");
   root.printTo(json);
-
   mqttClient.publish((String(sys.devUuid) + ack_topic).c_str(), (const uint8_t *)json, strlen(json), false);
 }
 void rtcInt() //this callback funtion is called when rtc interrupt is triggered
@@ -1118,7 +1118,7 @@ void json_program_starts(uint8_t program)
 {
   char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
   //Generate the structure of the program via json
-  DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
+  DynamicJsonBuffer jsonBuffer(128);
   JsonObject &root = jsonBuffer.createObject();
   uint8_t index_program = program; //I generate the json only for the program request
   root["prog"] = String(program_letters[index_program]);
@@ -1138,10 +1138,15 @@ void json_program_starts(uint8_t program)
         minutes = String(prog[index_program].start[index_time][1]);
       starts.add(hours + ":" + minutes);
     }
-  root["water"] = (int)(prog[index_program].waterPercent);
-  char json[120];
+  int water = (int)(prog[index_program].waterPercent);
+  if (water < 0)
+    water = 100;
+  root["water"] = water;
+  char json[150];
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
+  DPRINT("Json_program_starts: ");
+  DPRINTLN(freeRam());
 
   // root.prettyPrintTo(Serial);
 }
@@ -1153,15 +1158,17 @@ void json_program_valves(uint8_t program)
   JsonObject &root = jsonBuffer.createObject();
   uint8_t index_program = program; //I generate the json only for the program request
   root["prog"] = String(program_letters[index_program]);
-  JsonArray &valves = root.createNestedArray("valves");
-  for (uint8_t index_valves = 0; index_valves < 15; index_valves++)
+  uint16_t time_compleat, time_in_format_h, time_in_format_m;
+  bool done = false;
+  for (uint8_t index_valves = 0; index_valves < 8; index_valves++)
     if (String(prog[index_program].irrigTime[index_valves]) != "255" && String(prog[index_program].irrigTime[index_valves]) != "247")
     {
+      JsonArray &valves = root.createNestedArray("valves");
       JsonObject &irrig = root.createNestedObject("");
       irrig["v"] = index_valves + 1;
-      uint16_t time_compleat = pg_reag_to_web(prog[index_program].irrigTime[index_valves]);
-      uint16_t time_in_format_h = time_compleat / 60;
-      uint16_t time_in_format_m = time_compleat % 60;
+      time_compleat = pg_reag_to_web(prog[index_program].irrigTime[index_valves]);
+      time_in_format_h = time_compleat / 60;
+      time_in_format_m = time_compleat % 60;
       String time_h_json, time_m_json;
       if (time_in_format_h < 10)
         time_h_json = '0' + String(time_in_format_h);
@@ -1176,9 +1183,8 @@ void json_program_valves(uint8_t program)
       valves.add(irrig);
     }
   char json[500];
-  // root.prettyPrintTo(Serial);
-
   root.printTo(json);
+  DPRINTLN(freeRam());
   mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
 }
 void json_clear_starts(uint8_t program)
@@ -1451,4 +1457,10 @@ void change_oasis_assigned(uint8_t oasis_number, uint8_t *assigned)
     delay(1000);
     Serial.println(" ");
   }
+}
+int freeRam()
+{
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
