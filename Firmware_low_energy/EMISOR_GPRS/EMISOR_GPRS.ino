@@ -70,10 +70,7 @@ typedef struct
   uint8_t start[6][2];
   uint16_t irrigTime[128];
 } program;
-typedef struct
-{
-  bool id_node[5];
-} msg_received_all;
+
 TinyGsm modem(Serial1);
 TinyGsmClient client(modem);
 PubSubClient mqttClient(client);
@@ -87,7 +84,6 @@ Sleep lowPower;
 
 Jam jam;
 sysVar sys;
-msg_received_all ack;
 
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[50];
@@ -127,7 +123,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   /*
-  char first_mem[] = "VYR_OASIS_A1";
+  char first_mem[] = "uuid_prueba_1_10";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
@@ -152,7 +148,6 @@ void setup()
   jam.ledBlink(LED_SETUP, 1000);
   //Set PG in time:
   change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
-  Serial.println("Set time of pg");
   print_flash();
   connectSIM();
   connectMqtt();
@@ -161,7 +156,7 @@ void setup()
   char assigned[] = {21, 34, 54, 67};
 
   //At re-starting the pg is going to read all the info and send it to the web
-  Serial.println("Sendding to app---");
+  Serial.print("Sendding to app---");
   DPRINTLN(freeRam());
   // getAllFromPG(); // Have no idea why i can't do both at the same time
   // json_connect_app(); //for sendding to the web that everithing is ok
@@ -172,7 +167,8 @@ void setup()
   // delay(500);
   // json_program_action(false, 'B');
 
-  Serial.println("Finish sending---");
+  Serial.print("Finish sending---");
+  DPRINTLN(freeRam());
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -206,7 +202,7 @@ void loop()
     DynamicJsonBuffer jsonBuffer(32);
     JsonObject &root = jsonBuffer.createObject();
     root.set("voltage", bat);
-    root.set("freeRam", freeRam());
+    root.set("freeRam", String(freeRam())+"B");
     root.printTo(json);
     mqttClient.publish((String(sys.devUuid) + "/uptime").c_str(), (const uint8_t *)json, strlen(json), false);
     DPRINTLN(freeRam());
@@ -328,7 +324,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   char json[MAX_JSON_SIZE];
   String sTopic;
   DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
-  // Serial.println(length);
   strcpy(json, (char *)payload); //one alternative is using c fucntion to convert
   JsonObject &parsed = jsonBuffer.parseObject(json);
   //DPRINT("Mqtt received: ");
@@ -613,7 +608,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
   }
   DPRINTLN(freeRam());
-
 }
 void send_web(char *topic, unsigned int length, int id)
 {
@@ -1189,16 +1183,13 @@ void json_program_valves(uint8_t program)
 }
 void json_clear_starts(uint8_t program)
 {
+  //I clear the starts info
   char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
-
-  DynamicJsonBuffer jsonBuffer(200);
+  DynamicJsonBuffer jsonBuffer(43);
   JsonObject &root = jsonBuffer.createObject();
   root["prog"] = String(program_letters[program]);
   JsonArray &starts = root.createNestedArray("starts");
-
-  // Serial.println();
-  // root.prettyPrintTo(Serial);
-  char json[MAX_JSON_SIZE];
+  char json[43];
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
 }
@@ -1221,14 +1212,11 @@ uint16_t pg_reag_to_web(uint16_t pg_time) //It return the time ok in minutes to 
 void json_connect_app()
 {
   //Generate the structure of the program via json
-  DynamicJsonBuffer jsonBuffer(500);
+  DynamicJsonBuffer jsonBuffer(53);
   JsonObject &root = jsonBuffer.createObject();
   root["uuid"] = String(sys.devUuid);
   root["model"] = "6011";
-  // char json[500];
-  // root.prettyPrintTo(Serial);
-
-  char json[MAX_JSON_SIZE];
+  char json[60];
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/connect").c_str(), (const uint8_t *)json, strlen(json), false);
 }
@@ -1365,9 +1353,6 @@ void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes, uint8_t second
   cmd_set_time[16] = time.charAt(1);
   calcrc((char *)cmd_set_time, sizeof(cmd_set_time) - 2);
   softSerial.write(cmd_set_time, sizeof(cmd_set_time)); //real send to PG
-  //for (i = 0; i < sizeof(cmd_set_time); i++)
-  //  Serial.write(cmd_set_time[i]);
-  Serial.println(" ");
 }
 void json_oasis_paring(bool pairing, uint8_t id_uuid, char *assigned)
 {
