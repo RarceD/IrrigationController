@@ -202,7 +202,7 @@ void loop()
     DynamicJsonBuffer jsonBuffer(32);
     JsonObject &root = jsonBuffer.createObject();
     root.set("voltage", bat);
-    root.set("freeRam", String(freeRam())+"B");
+    root.set("freeRam", String(freeRam()) + "B");
     root.printTo(json);
     mqttClient.publish((String(sys.devUuid) + "/uptime").c_str(), (const uint8_t *)json, strlen(json), false);
     DPRINTLN(freeRam());
@@ -549,6 +549,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         String irrig_time;           //The string for the 00:00 time format
         uint8_t number_valves;
         uint16_t val = 0;
+        uint8_t clear_num = 1;
         for (uint8_t index_valves = 0; index_valves < valves.size(); index_valves++)
         {
           irrig_time = valves[index_valves]["time"].as<String>();
@@ -561,11 +562,24 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           LOG(time_valves[number_valves][0]);
           LOG(":");
           LOGLN(time_valves[number_valves][1]);
-          delay(100);
+          delay(10);
           //Obtein the number of the valves and write the EEPROM memmory in correct positions
-          if (number_valves != index_valves)
+          while (number_valves + 1 > clear_num)
           {
-            //TODO: Clear all the valve times that are not fixed
+            String mem_starts = String(mem_pos + clear_num - 1, HEX);
+            mem_starts.toUpperCase();
+            cmd_write_data[13] = mem_starts.charAt(0);
+            cmd_write_data[14] = mem_starts.charAt(1);
+            cmd_write_data[15] = mem_starts.charAt(2);
+            cmd_write_data[17] = '0';
+            cmd_write_data[18] = '0';
+            calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+            softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+            for (i = 0; i < sizeof(cmd_write_data); i++)
+              Serial.write(cmd_write_data[i]);
+            delay(1000);
+            Serial.println(" ");
+            clear_num++;
           }
           val = time_to_pg_format(time_valves[number_valves][0], time_valves[number_valves][1]);
           String mem_time = String(val, HEX);
@@ -586,6 +600,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             Serial.write(cmd_write_data[i]);
           delay(1000);
           Serial.println(" ");
+          clear_num++;
         }
       }
       //Write in the PG memmory the irrig %
