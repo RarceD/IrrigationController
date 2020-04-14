@@ -67,10 +67,17 @@ typedef struct
   bool send_ack; //When I lost connection for 20 minutes I do not send ack more
   uint8_t counter_secure_close;
 } valve_status;
-
+typedef enum
+{
+  MODE_FIRST_SYN,
+  MODE_SLEEP,
+  MODE_AWAKE,
+  MODE_ACK
+} STATE_MACHINE;
 Jam jam;
 sysVar sys;
 valve_status v;
+STATE_MACHINE state_machine;
 RV1805 rtc;
 Sleep lowPower;
 //SimpleTimer timer_manual_valve_1, timer_manual_valve_2, timer_manual_valve_3, timer_manual_valve_4;
@@ -83,11 +90,6 @@ volatile bool intButton, intRtc, Global_Flag_int;
 uint16_t Set_Vshot = 600;
 uint8_t iOpen = 0, valveOpened[4];
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN];
-uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-
-bool to_sleep;
-bool MODE_AWAKE;
-bool SEND_ACK;
 
 /******************************************************************* setup section ************************************************************************************/
 uint32_t millix;
@@ -124,7 +126,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   // I have to change the flash info for each devise:
- /*
+  /*
   sys.id = 2;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '3';
@@ -175,6 +177,7 @@ void setup()
   v.just_one_time_awake_1_min = true;
   v.send_ack = true;
   DPRINTLN(freeRam());
+  state_machine = MODE_FIRST_SYN;
 }
 /******************************************************************* main program  ************************************************************************************/
 
@@ -182,7 +185,7 @@ void loop()
 {
   /*
   The first time you plug we have to wait received the time to sincronize  
-  */
+  
   if (first_start_syn)
   {
     if (manager.available()) // Detect radio activity and set a timer for waking up at 00
@@ -301,6 +304,43 @@ void loop()
       }
       delay(10);
     }
+  }
+*/
+  switch (state_machine)
+  {
+  case MODE_FIRST_SYN:
+    if (manager.available()) // Detect radio activity and set a timer for waking up at 00
+    {
+      DPRINTLN("MODE_FIRST_SYNC");
+      uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+      uint8_t len = sizeof(buf);
+      manager.recvfromAck(buf, &len);
+      listen_master(); //When activity is detected listen the master
+      DPRINTLN("ESPERA");
+      MODE_AWAKE = false; //I go to sleep
+      v.send_ack = true;  //Continmue sending the ack because I have not lost the communication
+      v.counter_secure_close = DEAD_TIME_COUNTER;
+      delay(500);
+    }
+    jam.ledBlink(LED_SETUP, 500);
+    break;
+  case MODE_SLEEP:
+    driver.sleep();
+    lowPower.sleep_delay(100);
+    break;
+  case MODE_AWAKE:
+    Serial.println("MODE_AWAKE");
+    rtc.setAlarmMode(6);
+    rtc.setAlarm(30 + sys.id - 1, 0, 0, 0, 0);
+    break;
+  case MODE_ACK:
+    Serial.println("MODE_ACK");
+    rtc.setAlarmMode(6);
+    rtc.setAlarm(0, 0, 0, 0, 0);
+    break;
+  default:
+    Serial.println("MODE");
+    break;
   }
 }
 
