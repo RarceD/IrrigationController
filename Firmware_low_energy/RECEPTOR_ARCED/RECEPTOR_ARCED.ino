@@ -1,5 +1,4 @@
 #include "Oasis_RarceD.h"
-// #include <SimpleTimer.h>
 
 /******************************************************************* debug ********************************************************************************************/
 #define DEBUG_ON
@@ -46,7 +45,19 @@ typedef enum
   ASSIGNED_MSG = 'A',
   STOP_MSG = 'S'
 } msg_receive;
-
+typedef enum
+{
+  MODE_FIRST_SYN,
+  MODE_SLEEP,
+  MODE_AWAKE,
+  MODE_ACK
+} STATE_MACHINE;
+typedef enum
+{
+  ACK,
+  FAULT,
+  SENSORS
+} msg_send;
 typedef struct
 {
   uint8_t id;                 // This is the unique ID, there are 250 units so we can fix this number for identify the net
@@ -62,20 +73,7 @@ typedef struct
   bool send_ack; //When I lost connection for 20 minutes I do not send ack more
   uint8_t counter_secure_close;
 } valve_status;
-typedef enum
-{
-  MODE_FIRST_SYN,
-  MODE_SLEEP,
-  MODE_AWAKE,
-  MODE_ACK
-} STATE_MACHINE;
-Jam jam;
-typedef enum
-{
-  ACK,
-  FAULT,
-  SENSORS
-} msg_send;
+
 sysVar sys;
 valve_status v;
 msg_send msg_sendd;
@@ -83,19 +81,15 @@ STATE_MACHINE state_machine;
 
 RV1805 rtc;
 Sleep lowPower;
-
 SPIFlash flash(CS_M);
 RH_RF95 driver(CS_RF, INT_RF);
 RHReliableDatagram manager(driver, CLIENT_ADDRESS);
 
 volatile bool intButton, intRtc, Global_Flag_int;
-uint16_t Set_Vshot = 600;
-uint8_t iOpen = 0, valveOpened[4];
 uint8_t data[20];
 
 /******************************************************************* setup section ************************************************************************************/
 
-bool first_start_syn = true;
 void setup()
 {
 #ifdef DEBUG_ON
@@ -157,7 +151,6 @@ void setup()
   rtc.setAlarmMode(6);
   rtc.setAlarm(0, 0, 0, 0, 0);
   // rtc.setToCompilerTime();
-  // For disable the interrupt : //rtc.setAlarmMode(0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   attachPCINT(digitalPinToPCINT(SW_SETUP), buttonInt, FALLING);
   chargeCapacitor();
@@ -169,11 +162,7 @@ void setup()
   print_flash();
   //First of all close all the valves just in case:
   for (uint8_t index = 0; index < 4; index++)
-  {
     v.valves_on[index] = false;
-    // valveAction(index + 1, v.valves_on[index]); // Turn On or OFF a valve
-    delay(1000);
-  }
   v.counter_secure_close = DEAD_TIME_COUNTER;
   v.just_one_time_awake_1_min = true;
   v.send_ack = true;
@@ -185,83 +174,6 @@ uint8_t millix;
 bool to_sleep;
 void loop()
 {
-  /*
-  The first time you plug we have to wait received the time to sincronize  
-  
- 
-    if (MODE_AWAKE)
-    {
-      if (manager.available()) // Detect radio activity
-      {
-        uint8_t len = sizeof(buf);
-        manager.recvfromAck(buf, &len);
-        listen_master(); //When activity is detected listen the master
-        to_sleep = true;
-        //for (int i = 0; i < sizeof(buf); i++)
-        //  Serial.write(buf[i]);
-        v.just_one_time_awake_1_min = true;
-        v.counter_secure_close = DEAD_TIME_COUNTER;
-        delay(10);
-      }
-      if (millis() - millix >= AWAKE_TIME_PER_MIN || to_sleep) // It is awake for 2 seconds
-      {
-        DPRINTLN(" A dormir");
-        //The oasis has lost the radio wave and the sync and I close just in case I flood something
-        if (v.counter_secure_close >= 1)
-        {
-          //If I lost connection for 3 min I awakae for 1 min and then everithing the sme
-          if (v.counter_secure_close == DEAD_TIME_COUNTER - AWAKE_TIME_COUNTER && v.just_one_time_awake_1_min)
-          {
-            DPRINTLN("I AM LOST AND I AWAKE FOR 1 MIN");
-            uint64_t millix_awake_for_1_min = millis();
-            bool connected = false;
-            while (millis() - millix_awake_for_1_min <= 60000) //In case I have not receive a packet in 3 min
-            {
-              if (manager.available()) // Detect radio activity and set a timer for waking up at 00
-              {
-                uint8_t len = sizeof(buf);
-                manager.recvfromAck(buf, &len);
-                listen_master(); //When activity is detected listen the master
-                v.counter_secure_close = DEAD_TIME_COUNTER;
-                v.send_ack = true;
-                connected = true;
-                delay(500);
-                break;
-              }
-              jam.ledBlink(LED_SETUP, 100);
-            }
-            DPRINTLN("1 min done, I am lost");
-            if (connected)
-              v.just_one_time_awake_1_min = true;
-            else
-              v.just_one_time_awake_1_min = false; //THIS TRY JUST ONE TIME TO KEEP THE BATTERY ON
-            MODE_AWAKE = false;                    //I go to sleep
-            intRtc = false;
-          }
-          v.counter_secure_close--;
-        }
-        else
-        {
-          //When the counter == 0;
-          //If I have not connected in 20 times I just close all the valves that are open
-          DPRINTLN("I CLOSE ALL THE VALVES BECAUSE I'VE NOT RECEIVED IN 20 MIN");
-          v.counter_secure_close = DEAD_TIME_COUNTER;
-          for (uint8_t index = 0; index < 4; index++)
-            if (v.valves_on[index])
-              valveAction(index + 1, false); // Turn On or OFF a valve
-          v.send_ack = false;
-        }
-        to_sleep = false;
-        MODE_AWAKE = false;
-        SEND_ACK = true;
-        delay(10);
-      }
-
-
-
-    }
-  }
-*/
   switch (state_machine)
   {
   case MODE_FIRST_SYN:
@@ -271,7 +183,8 @@ void loop()
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
       if (manager.recvfromAck(buf, &len))
-        listen_master(); //This function change the state machine to SLEEP
+        listen_master(buf); //This function change the state machine to SLEEP
+      intRtc = 0;
     }
     ledBlink(LED_SETUP, 100);
     break;
@@ -282,11 +195,10 @@ void loop()
   case MODE_AWAKE:
     if (manager.available()) // Detect radio activity and set a timer for waking up at 00
     {
-      DPRINTLN("MODE_AWAKE");
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
       if (manager.recvfromAck(buf, &len))
-        listen_master(); //This function change the state machine to SLEEP
+        listen_master(buf); //This function change the state machine to SLEEP
       to_sleep = true;
     }
     if (millis() - millix >= AWAKE_TIME_PER_MIN || to_sleep) // It is awake for 2 seconds
@@ -299,7 +211,6 @@ void loop()
     }
     break;
   case MODE_ACK:
-    Serial.println("MODE_ACK");
     rtc.setAlarmMode(6);
     rtc.setAlarm(0, 0, 0, 0, 0);
     send_master(ACK);
@@ -319,16 +230,20 @@ void loop()
     if (rtc.getSeconds() < 10)
     {
       state_machine = MODE_AWAKE;
+      DPRINTLN("MODE_AWAKE");
       millix = millis(); // I have to be in AWAKE_MODE for 2 seconds
     }
     else
+    {
+      DPRINTLN("MODE_ACK");
       state_machine = MODE_ACK;
+    }
   }
 }
 
 void chargeCapacitor()
 {
-
+  uint16_t Set_Vshot = 600;
   uint16_t a, Vshot;
   for (a = 0; a < 350; a++)
   {
@@ -368,7 +283,7 @@ uint8_t batLevel() // return the battery level
 }
 void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 {
-
+  uint8_t iOpen = 0, valveOpened[4];
   uint16_t Vshot, a;
   bool defined = false;
   uint8_t i, Drv, Out, OutB, nAction = 0, aux;
@@ -488,14 +403,14 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
   }
   delay(5);
 }
-void listen_master() // Listen and actuate in consideration
+void listen_master(uint8_t buf[]) // Listen and actuate in consideration
 {
   DPRINTLN("He recibido del master: ");
   uint8_t start_msg_letter[] = "AAAA"; //The max number of messages in buffer is 4 because why not?
   uint8_t index_start_msg = 0;
   // I first find the number of msg and the position of the first letter of them
   // I save them on start_msg_letter[]
-  for (int i = 0; i < sizeof(buf); i++)
+  for (int i = 0; i < 150; i++)
   {
     if (buf[i] == '#')
       if (buf[i + 1] == '#')
@@ -686,14 +601,12 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
 }
 void rtcInt()
 {
-  DPRINTLN("RTC_INT");
   intRtc = true;
 }
 void buttonInt()
 {
   DPRINTLN("BUTTON PRESSED");
-  ledBlink(LED_SETUP, 1000);
-  first_start_syn = true;
+  state_machine = MODE_FIRST_SYN;
   // I set the routine to start and syncronize
 }
 void print_flash()

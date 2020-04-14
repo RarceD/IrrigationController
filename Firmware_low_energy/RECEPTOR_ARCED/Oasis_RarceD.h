@@ -24,27 +24,6 @@
 #define ETX 0x03
 
 
-#define PRG_INDEX 11
-#define ADDR_INDEX 12
-#define WR_ADDR_INDEX 13
-#define WR_DATA_INDEX 17
-#define NEW_CHILD 0xfe
-#define TIME_NDEF 87000
-#define TOTAL_VALVE 128
-#define TOTAL_PROG 6
-#define TOTAL_START 6
-#define TOTAL_OUTPUT 4
-#define MAX_JSON_SIZE 512
-#define SYNC_TIME 5
-#define UUID_LEN 37
-#define APORTE_AGUA_LEN 47
-#define INTERV_INIT_LEN 47
-#define WATERING_LEN 17
-#define ARRANQUE_LEN 35
-#define IRRIG_TIME_LEN 192
-#define BOOK_LEN 192
-#define RESP_TIMEOUT 5000
-#define MAX_JSON_SIZE 512
 /*****************************/
 
 /********* MEMORY MAP ***********/
