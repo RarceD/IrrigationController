@@ -1,4 +1,4 @@
-#include <JamAtm-Vyrsa.h>
+#include "Oasis_RarceD.h"
 // #include <SimpleTimer.h>
 
 /******************************************************************* debug ********************************************************************************************/
@@ -46,12 +46,7 @@ typedef enum
   ASSIGNED_MSG = 'A',
   STOP_MSG = 'S'
 } msg_receive;
-typedef enum
-{
-  ACK,
-  FAULT,
-  SENSORS
-} msg_send;
+
 typedef struct
 {
   uint8_t id;                 // This is the unique ID, there are 250 units so we can fix this number for identify the net
@@ -75,12 +70,19 @@ typedef enum
   MODE_ACK
 } STATE_MACHINE;
 Jam jam;
+typedef enum
+{
+  ACK,
+  FAULT,
+  SENSORS
+} msg_send;
 sysVar sys;
 valve_status v;
+msg_send msg_sendd;
 STATE_MACHINE state_machine;
+
 RV1805 rtc;
 Sleep lowPower;
-//SimpleTimer timer_manual_valve_1, timer_manual_valve_2, timer_manual_valve_3, timer_manual_valve_4;
 
 SPIFlash flash(CS_M);
 RH_RF95 driver(CS_RF, INT_RF);
@@ -89,10 +91,9 @@ RHReliableDatagram manager(driver, CLIENT_ADDRESS);
 volatile bool intButton, intRtc, Global_Flag_int;
 uint16_t Set_Vshot = 600;
 uint8_t iOpen = 0, valveOpened[4];
-uint8_t data[RH_RF95_MAX_MESSAGE_LEN];
+uint8_t data[20];
 
 /******************************************************************* setup section ************************************************************************************/
-uint32_t millix;
 
 bool first_start_syn = true;
 void setup()
@@ -139,7 +140,7 @@ void setup()
     sys.ack_msg[i] = ack[i]; 
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys);
-*/
+  */
   flash.readAnything(FLASH_SYS_DIR, sys);
   manager.init();
   driver.setPreambleLength(8);
@@ -160,7 +161,7 @@ void setup()
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   attachPCINT(digitalPinToPCINT(SW_SETUP), buttonInt, FALLING);
   chargeCapacitor();
-  jam.ledBlink(LED_SETUP, 1000);
+  ledBlink(LED_SETUP, 1000);
   rtc.updateTime();
   DPRINT(rtc.stringDate());
   DPRINT(F(" "));
@@ -180,32 +181,14 @@ void setup()
   state_machine = MODE_FIRST_SYN;
 }
 /******************************************************************* main program  ************************************************************************************/
-
+uint8_t millix;
+bool to_sleep;
 void loop()
 {
   /*
   The first time you plug we have to wait received the time to sincronize  
   
-  if (first_start_syn)
-  {
-    if (manager.available()) // Detect radio activity and set a timer for waking up at 00
-    {
-      //start = millis();
-      DPRINTLN("FIRST TRY");
-      uint8_t len = sizeof(buf);
-      manager.recvfromAck(buf, &len);
-      listen_master(); //When activity is detected listen the master
-      DPRINTLN("ESPERA");
-      MODE_AWAKE = false; //I go to sleep
-      v.send_ack = true;  //Continmue sending the ack because I have not lost the communication
-      v.counter_secure_close = DEAD_TIME_COUNTER;
-      delay(500);
-    }
-    jam.ledBlink(LED_SETUP, 500);
-  }
-  // When it's syn there are 3 modes: SLEEP, AWAKE and SEND_ACK
-  else
-  {
+ 
     if (MODE_AWAKE)
     {
       if (manager.available()) // Detect radio activity
@@ -273,36 +256,9 @@ void loop()
         SEND_ACK = true;
         delay(10);
       }
-    }
-    if (!MODE_AWAKE) //If there is no interrupts the node is going to sleep forever
-    {
-      driver.sleep();
-      lowPower.sleep_delay(200);
-    }
-    if (intRtc) //The rtc interrupt is triggered and there are 2 options
-    {
-      intRtc = false;
-      rtc.updateTime();
-      DPRINTLN(rtc.stringTime());
 
-      if (SEND_ACK) //The oasis has to send the ACK to the master
-      {
-        SEND_ACK = false;
-        rtc.setAlarmMode(6);
-        rtc.setAlarm(0, 0, 0, 0, 0);
-        if (v.send_ack) //Only send if I have not lost the communication
-          send_master(ACK);
-        DPRINTLN("ACK MODE");
-      }
-      else //The oasis has to listen and execute the rf commands
-      {
-        MODE_AWAKE = true;
-        rtc.setAlarmMode(6);
-        rtc.setAlarm(30 + sys.id - 1, 0, 0, 0, 0);
-        DPRINTLN("AWAKE MODE");
-        millix = millis();
-      }
-      delay(10);
+
+
     }
   }
 */
@@ -314,33 +270,59 @@ void loop()
       DPRINTLN("MODE_FIRST_SYNC");
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
-      manager.recvfromAck(buf, &len);
-      listen_master(); //When activity is detected listen the master
-      DPRINTLN("ESPERA");
-      MODE_AWAKE = false; //I go to sleep
-      v.send_ack = true;  //Continmue sending the ack because I have not lost the communication
-      v.counter_secure_close = DEAD_TIME_COUNTER;
-      delay(500);
+      if (manager.recvfromAck(buf, &len))
+        listen_master(); //This function change the state machine to SLEEP
     }
-    jam.ledBlink(LED_SETUP, 500);
+    ledBlink(LED_SETUP, 100);
     break;
   case MODE_SLEEP:
     driver.sleep();
     lowPower.sleep_delay(100);
     break;
   case MODE_AWAKE:
-    Serial.println("MODE_AWAKE");
-    rtc.setAlarmMode(6);
-    rtc.setAlarm(30 + sys.id - 1, 0, 0, 0, 0);
+    if (manager.available()) // Detect radio activity and set a timer for waking up at 00
+    {
+      DPRINTLN("MODE_AWAKE");
+      uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+      uint8_t len = sizeof(buf);
+      if (manager.recvfromAck(buf, &len))
+        listen_master(); //This function change the state machine to SLEEP
+      to_sleep = true;
+    }
+    if (millis() - millix >= AWAKE_TIME_PER_MIN || to_sleep) // It is awake for 2 seconds
+    {
+      Serial.println("to_sleep_after_awake");
+      rtc.setAlarmMode(6);
+      rtc.setAlarm(30 + sys.id - 1, 0, 0, 0, 0);
+      state_machine = MODE_SLEEP;
+      delay(1);
+    }
     break;
   case MODE_ACK:
     Serial.println("MODE_ACK");
     rtc.setAlarmMode(6);
     rtc.setAlarm(0, 0, 0, 0, 0);
+    send_master(ACK);
+    state_machine = MODE_SLEEP;
+    delay(1);
     break;
   default:
-    Serial.println("MODE");
+    Serial.println("MODE DEAD");
     break;
+  }
+  if (intRtc) //The rtc interrupt is triggered and there are 2 options
+  {
+    intRtc = false;
+    rtc.updateTime();
+    DPRINTLN(rtc.stringTime());
+    //I decide which state is the one:
+    if (rtc.getSeconds() < 10)
+    {
+      state_machine = MODE_AWAKE;
+      millix = millis(); // I have to be in AWAKE_MODE for 2 seconds
+    }
+    else
+      state_machine = MODE_ACK;
   }
 }
 
@@ -599,8 +581,8 @@ void listen_master() // Listen and actuate in consideration
       if (seconds < 53 && seconds > 1)
         seconds -= 1;
       change_time(hours, minutes, day, month, seconds, 2020);
-      jam.ledBlink(LED_SETUP, 500); //A led ON to realize that I it es continously receiving
-
+      state_machine = MODE_SLEEP; //I change the state of the machine
+      ledBlink(LED_SETUP, 500);   //A led ON to realize that I it es continously receiving
       break;
     }
     case ASSIGNED_MSG:
@@ -690,7 +672,6 @@ void send_master(uint8_t msg) // I just have to send the flash info for getting 
 void change_time(int hours, int minutes, int day, int month, int seconds, int year)
 {
   rtc.set24Hour();
-  first_start_syn = false;
   uint8_t currentTime[8];
   currentTime[0] = rtc.DECtoBCD(0);
   currentTime[1] = rtc.DECtoBCD(seconds);
@@ -702,17 +683,6 @@ void change_time(int hours, int minutes, int day, int month, int seconds, int ye
   currentTime[7] = rtc.DECtoBCD(0);
   rtc.setTime(currentTime, TIME_ARRAY_LENGTH);
   DPRINTLN("TIME CHANGE");
-  DPRINTLN(freeRam());
-  // DPRINT(rtc.stringDate());
-  // DPRINT(" ");
-  // DPRINTLN(rtc.stringTime());
-  // DPRINT("DayOfWeek: ");
-  // DPRINTLN(rtc.dayOfWeek());
-
-  // /***** timestamp ******/
-  // rtc.updateTime();
-  // DPRINT("timestamp: ");
-  // DPRINTLN(rtc.getTimestamp());
 }
 void rtcInt()
 {
@@ -722,7 +692,7 @@ void rtcInt()
 void buttonInt()
 {
   DPRINTLN("BUTTON PRESSED");
-  jam.ledBlink(LED_SETUP, 1000);
+  ledBlink(LED_SETUP, 1000);
   first_start_syn = true;
   // I set the routine to start and syncronize
 }
