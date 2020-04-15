@@ -1,15 +1,10 @@
 #include "Oasis_RarceD.h"
+#include <stdint.h>
 
-void softReset()
-{
-  wdt_enable(WDTO_15MS);
-  while (1)
-    ;
-}
 
 void ledBlink(uint8_t pin, long milli)
 {
-  digitalWrite(pin, HIGH);
+  digitalWrite(pin, 1);
   delay(milli);
-  digitalWrite(pin, LOW);
+  digitalWrite(pin, 0);
 }

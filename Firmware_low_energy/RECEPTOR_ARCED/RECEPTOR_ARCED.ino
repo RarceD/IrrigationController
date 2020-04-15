@@ -1,5 +1,13 @@
-#include "Oasis_RarceD.h"
-
+// #include "Oasis_RarceD.h"
+#include <JamSleep.h>
+#include <PinChangeInterrupt.h>
+#include <Arduino.h>
+#include <avr/wdt.h>
+#include <SPIFlash.h>
+#include <SPI.h>
+#include <RHReliableDatagram.h>
+#include <RH_RF95.h>
+#include <SparkFun_RV1805.h>
 /******************************************************************* debug ********************************************************************************************/
 #define DEBUG_ON
 #ifdef DEBUG_ON
@@ -9,6 +17,52 @@
 #define DPRINT(...)
 #define DPRINTLN(...)
 #endif
+
+#define TX_PWR 20
+#define RF_TIMEOUT 500
+#define MAX_TEMP 15000
+#define FACTORY_TIMEOUT 3000
+#define LED_E_PIN 19
+#define MAX_CHILD 16
+#define SECTOR_SIZE 4096
+#define CMD_INDEX 0
+#define PAYLOAD_INDEX 6
+#define PG_MAX_LEN 256
+#define PG_TIMEOUT 2000
+#define ACK_SIZE 6
+#define ETX 0x03
+
+/*********** PIN OUT **********/
+#define RF_RST 27
+#define INT_RF 2
+#define INT_RTC 14
+#define CS_M 22
+#define CS_RF 23
+#define VREF_IN 24
+#define WMOTOR_REF 31
+#define PWREN 28
+#define SLEEP1 17
+#define SLEEP2 16
+#define AIN1 18
+#define AIN2 19
+#define BIN1 30
+#define BIN2 29
+#define NFAULT 20
+#define SW_SETUP 0
+#define LED_SETUP 3
+/********* MEMORY MAP ***********/
+#define SYS_VAR_ADDR 0x040000
+#define PROG_VAR_ADDR 0x041000
+#define FLASH_SYS_DIR 0x040400
+
+/************ RF info ***********/
+#define TX_PWR 20
+#define CLIENT_ADDRESS 4
+#define SERVER_ADDRESS 3
+
+#define DEAD_TIME_COUNTER 20  //if I lose 20 packets I am dead and I close all the valves I have
+#define AWAKE_TIME_COUNTER 5 //if I do not receive 3 packets I awake 1 minute compleat just one time
+#define AWAKE_TIME_PER_MIN 2000
 
 /******************************************************************* declarations  ************************************************************************************/
 typedef enum
@@ -42,8 +96,9 @@ typedef struct
 {
   bool valves_on[4];
   bool secure_close; //If I do not receive msg from the emiter in 5 minutes I switch off all the valves
-  bool just_one_time_awake_1_min;
+  bool secure_awake;
   bool send_ack; //When I lost connection for 20 minutes I do not send ack more
+  bool receive_time;
   uint8_t counter_secure_close;
 } valve_status;
 
@@ -95,7 +150,7 @@ void setup()
   /*
   sys.id = 2;
   sys.master_id[0] = 'A';
-  sys.master_id[1] = '3';
+  sys.master_id[1] = '2';
   sys.assigned_output[0] = 1;
   sys.assigned_output[1] = 2;
   sys.assigned_output[2] = 3;
@@ -134,14 +189,12 @@ void setup()
   //First of all close all the valves just in case:
   for (uint8_t index = 0; index < 4; index++)
     v.valves_on[index] = false;
-  v.counter_secure_close = DEAD_TIME_COUNTER;
-  v.just_one_time_awake_1_min = true;
-  v.send_ack = true;
+
   DPRINTLN(freeRam());
   state_machine = MODE_FIRST_SYN;
 }
 /******************************************************************* main program  ************************************************************************************/
-uint8_t millix;
+uint32_t millix;
 bool to_sleep;
 void loop()
 {
@@ -153,9 +206,16 @@ void loop()
       DPRINTLN("MODE_FIRST_SYNC");
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
-      if (manager.recvfromAck(buf, &len))
-        listen_master(buf); //This function change the state machine to SLEEP
+      v.receive_time = true;              //I only receive the time ones
+      if (manager.recvfromAck(buf, &len)) //Just one time at start
+        listen_master(buf);               //This function change the state machine to SLEEP
       intRtc = 0;
+      v.counter_secure_close = DEAD_TIME_COUNTER;
+      v.send_ack = true;      //Continue sending ack to emiter
+      v.receive_time = false; //No more time change
+      v.secure_close = true;  //I can close all the valves ones
+      v.secure_awake = true;
+      to_sleep = false;
     }
     ledBlink(LED_SETUP, 100);
     break;
@@ -166,25 +226,82 @@ void loop()
   case MODE_AWAKE:
     if (manager.available()) // Detect radio activity and set a timer for waking up at 00
     {
+      DPRINTLN("Received");
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
       if (manager.recvfromAck(buf, &len))
         listen_master(buf); //This function change the state machine to SLEEP
+      ledBlink(LED_SETUP, 500);   //A led ON to realize that I it es continously receiving
       to_sleep = true;
+      v.send_ack = true;     //Continue sending ack to emiter
+      v.secure_close = true; //I can close all the valves ones
+      v.counter_secure_close = DEAD_TIME_COUNTER;
+      v.secure_awake = true;
     }
     if (millis() - millix >= AWAKE_TIME_PER_MIN || to_sleep) // It is awake for 2 seconds
     {
-      Serial.println("to_sleep_after_awake");
+      DPRINTLN("to_sleep");
+      DPRINTLN("");
       rtc.setAlarmMode(6);
       rtc.setAlarm(30 + sys.id - 1, 0, 0, 0, 0);
       state_machine = MODE_SLEEP;
-      delay(1);
+      if (!to_sleep)
+      {
+        DPRINTLN("Lost sync");
+        DPRINTLN(" ");
+        if (v.counter_secure_close == DEAD_TIME_COUNTER - AWAKE_TIME_COUNTER && v.secure_awake)
+        {
+          v.secure_awake = false;
+          v.send_ack = false; //not sendding sending ack to emiter
+          uint32_t time_awake = millis();
+          DPRINTLN("1 min awake");
+          while (millis() - time_awake < 60000)
+          {
+            if (manager.available())
+            { // Detect radio activity and set a timer for waking up at 00
+              uint8_t buf[150];
+              uint8_t len = sizeof(buf);
+              v.receive_time = true;              //I only receive the time ones
+              if (manager.recvfromAck(buf, &len)) //Just one time at start
+                listen_master(buf);               //This function change the state machine to SLEEP
+              intRtc = 0;
+              v.counter_secure_close = DEAD_TIME_COUNTER;
+              v.send_ack = true;      //Continue sending ack to emiter
+              v.receive_time = false; //No more time change
+              v.secure_close = true;  //I can close all the valves ones
+              v.secure_awake = true;
+              break;
+            }
+            ledBlink(LED_SETUP, 100);
+          }
+        }
+        if (v.counter_secure_close > 0)
+          v.counter_secure_close--;
+        else
+        {
+          v.counter_secure_close = DEAD_TIME_COUNTER;
+          if (v.secure_close)
+          {
+            v.secure_close = false;
+            DPRINTLN("I close all the valves");
+            for (uint8_t times = 0; times < 4; times++)
+              if (v.valves_on[times])
+              {
+                valveAction(times, false);
+                delay(1000);
+              }
+          }
+        }
+      }
+      to_sleep = false;
+      delay(10);
     }
     break;
   case MODE_ACK:
     rtc.setAlarmMode(6);
     rtc.setAlarm(0, 0, 0, 0, 0);
-    send_master(ACK);
+    if (v.send_ack)
+      send_master(ACK);
     state_machine = MODE_SLEEP;
     delay(1);
     break;
@@ -200,9 +317,9 @@ void loop()
     //I decide which state is the one:
     if (rtc.getSeconds() < 10)
     {
-      state_machine = MODE_AWAKE;
       DPRINTLN("MODE_AWAKE");
       millix = millis(); // I have to be in AWAKE_MODE for 2 seconds
+      state_machine = MODE_AWAKE;
     }
     else
     {
@@ -376,7 +493,7 @@ void valveAction(uint8_t Valve, boolean Dir) // Turn On or OFF a valve
 }
 void listen_master(uint8_t buf[]) // Listen and actuate in consideration
 {
-  DPRINTLN("He recibido del master: ");
+  // DPRINTLN("He recibido del master: ");
   uint8_t start_msg_letter[] = "AAAA"; //The max number of messages in buffer is 4 because why not?
   uint8_t index_start_msg = 0;
   // I first find the number of msg and the position of the first letter of them
@@ -466,9 +583,9 @@ void listen_master(uint8_t buf[]) // Listen and actuate in consideration
         month = (buf[buffer_index + 19] - '0') * 10 + (buf[buffer_index + 20] - '0');
       if (seconds < 53 && seconds > 1)
         seconds -= 1;
-      change_time(hours, minutes, day, month, seconds, 2020);
+      if (v.receive_time) //I only change the RTC time ones
+        change_time(hours, minutes, day, month, seconds, 2020);
       state_machine = MODE_SLEEP; //I change the state of the machine
-      ledBlink(LED_SETUP, 500);   //A led ON to realize that I it es continously receiving
       break;
     }
     case ASSIGNED_MSG:
@@ -609,4 +726,10 @@ int freeRam()
   extern int __heap_start, *__brkval;
   int v;
   return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+}
+void ledBlink(uint8_t pin, long milli)
+{
+  digitalWrite(pin, 1);
+  delay(milli);
+  digitalWrite(pin, 0);
 }

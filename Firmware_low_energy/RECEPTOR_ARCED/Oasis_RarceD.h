@@ -1,13 +1,6 @@
 
-#include <PinChangeInterrupt.h>
-#include <Arduino.h>
-#include <avr/wdt.h>
-#include <SPIFlash.h>
-#include <SPI.h>
-#include <RHReliableDatagram.h>
-#include <RH_RF95.h>
-#include <SparkFun_RV1805.h>
-#include <JamSleep.h>
+#include <stdint.h>
+
 
 #define TX_PWR 20
 #define RF_TIMEOUT 500
