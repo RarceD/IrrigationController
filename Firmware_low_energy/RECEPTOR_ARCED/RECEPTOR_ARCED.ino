@@ -1,15 +1,7 @@
-// #include "Oasis_RarceD.h"
-#include <JamSleep.h>
-#include <PinChangeInterrupt.h>
-#include <Arduino.h>
-#include <avr/wdt.h>
-#include <SPIFlash.h>
-#include <SPI.h>
-#include <RHReliableDatagram.h>
-#include <RH_RF95.h>
-#include <SparkFun_RV1805.h>
+#include "Oasis_RarceD.h"
+
 /******************************************************************* debug ********************************************************************************************/
-#define DEBUG_ON
+// #define DEBUG_ON
 #ifdef DEBUG_ON
 #define DPRINT(...) Serial.print(__VA_ARGS__)
 #define DPRINTLN(...) Serial.println(__VA_ARGS__)
@@ -17,52 +9,6 @@
 #define DPRINT(...)
 #define DPRINTLN(...)
 #endif
-
-#define TX_PWR 20
-#define RF_TIMEOUT 500
-#define MAX_TEMP 15000
-#define FACTORY_TIMEOUT 3000
-#define LED_E_PIN 19
-#define MAX_CHILD 16
-#define SECTOR_SIZE 4096
-#define CMD_INDEX 0
-#define PAYLOAD_INDEX 6
-#define PG_MAX_LEN 256
-#define PG_TIMEOUT 2000
-#define ACK_SIZE 6
-#define ETX 0x03
-
-/*********** PIN OUT **********/
-#define RF_RST 27
-#define INT_RF 2
-#define INT_RTC 14
-#define CS_M 22
-#define CS_RF 23
-#define VREF_IN 24
-#define WMOTOR_REF 31
-#define PWREN 28
-#define SLEEP1 17
-#define SLEEP2 16
-#define AIN1 18
-#define AIN2 19
-#define BIN1 30
-#define BIN2 29
-#define NFAULT 20
-#define SW_SETUP 0
-#define LED_SETUP 3
-/********* MEMORY MAP ***********/
-#define SYS_VAR_ADDR 0x040000
-#define PROG_VAR_ADDR 0x041000
-#define FLASH_SYS_DIR 0x040400
-
-/************ RF info ***********/
-#define TX_PWR 20
-#define CLIENT_ADDRESS 4
-#define SERVER_ADDRESS 3
-
-#define DEAD_TIME_COUNTER 20  //if I lose 20 packets I am dead and I close all the valves I have
-#define AWAKE_TIME_COUNTER 5 //if I do not receive 3 packets I awake 1 minute compleat just one time
-#define AWAKE_TIME_PER_MIN 2000
 
 /******************************************************************* declarations  ************************************************************************************/
 typedef enum
@@ -148,14 +94,14 @@ void setup()
   flash.begin();
   // I have to change the flash info for each devise:
   /*
-  sys.id = 2;
+  sys.id = 1;
   sys.master_id[0] = 'A';
   sys.master_id[1] = '2';
   sys.assigned_output[0] = 1;
   sys.assigned_output[1] = 2;
   sys.assigned_output[2] = 3;
   sys.assigned_output[3] = 4;
-  char ack[] = "##OK02##";
+  char ack[] = "##OK01##";
   for (int i = 0; i < sizeof(ack); i++)
     sys.ack_msg[i] = ack[i]; 
   flash.eraseSector(FLASH_SYS_DIR);
@@ -167,7 +113,7 @@ void setup()
   driver.setTxPower(TX_PWR, false);
   manager.setRetries(8); // I change this value but I don`t now what is the best
   // This value should be random for not overlapping
-  uint8_t time_retries = 120;
+  uint8_t time_retries = 100;
   manager.setTimeout(time_retries);
   SWire.begin();
   rtc.begin();
@@ -230,8 +176,9 @@ void loop()
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
       if (manager.recvfromAck(buf, &len))
-        listen_master(buf); //This function change the state machine to SLEEP
-      ledBlink(LED_SETUP, 500);   //A led ON to realize that I it es continously receiving
+        listen_master(buf);     //This function change the state machine to SLEEP
+      v.receive_time = false;   //I only receive the time ones
+      ledBlink(LED_SETUP, 500); //A led ON to realize that I it es continously receiving
       to_sleep = true;
       v.send_ack = true;     //Continue sending ack to emiter
       v.secure_close = true; //I can close all the valves ones
@@ -249,6 +196,7 @@ void loop()
       {
         DPRINTLN("Lost sync");
         DPRINTLN(" ");
+        v.receive_time = true; //I only receive the time ones
         if (v.counter_secure_close == DEAD_TIME_COUNTER - AWAKE_TIME_COUNTER && v.secure_awake)
         {
           v.secure_awake = false;
@@ -669,8 +617,10 @@ void send_master(uint8_t msg) // I just have to send the flash info for getting 
       data[i] = sys.ack_msg[i];
   }
   uint8_t batery_level = batLevel();
-  data[9] = (batery_level / 10) + '0';
-  data[10] = (batery_level % 10) + '0';
+  if (batery_level >= 100)
+    batery_level == 99;
+  data[8] = (batery_level / 10) + '0';
+  data[9] = (batery_level % 10) + '0';
   manager.sendtoWait(data, 15, SERVER_ADDRESS);
 }
 void change_time(int hours, int minutes, int day, int month, int seconds, int year)
@@ -720,12 +670,6 @@ void print_flash()
   for (int i = 0; i < sizeof(sys.ack_msg); i++)
     Serial.write(sys.ack_msg[i]);
   DPRINTLN(" ");
-}
-int freeRam()
-{
-  extern int __heap_start, *__brkval;
-  int v;
-  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
 void ledBlink(uint8_t pin, long milli)
 {

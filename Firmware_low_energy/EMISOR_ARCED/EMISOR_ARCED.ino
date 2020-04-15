@@ -236,7 +236,7 @@ void loop()
     if (!ack.clear)
       ack.counter = millis();
     ack.clear = true;
-    delay(10);
+    Serial.println((char*)buf);
   }
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
   if ((ack.clear && (millis() - ack.counter > 12000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
