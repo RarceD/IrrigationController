@@ -1,7 +1,7 @@
 #include "Oasis_RarceD.h"
 
 /******************************************************************* debug ********************************************************************************************/
-// #define DEBUG_ON
+#define DEBUG_ON
 #ifdef DEBUG_ON
 #define DPRINT(...) Serial.print(__VA_ARGS__)
 #define DPRINTLN(...) Serial.println(__VA_ARGS__)
@@ -50,7 +50,7 @@ typedef struct
 
 sysVar sys;
 valve_status v;
-STATE_MACHINE state_machine;
+uint8_t state_machine;
 
 RV1805 rtc;
 Sleep lowPower;

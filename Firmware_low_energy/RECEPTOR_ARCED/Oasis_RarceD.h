@@ -50,8 +50,8 @@
 
 /************ RF info ***********/
 #define TX_PWR 20
-#define CLIENT_ADDRESS 4
-#define SERVER_ADDRESS 3
+#define CLIENT_ADDRESS 2
+#define SERVER_ADDRESS 1
 
 #define DEAD_TIME_COUNTER 5  //if I lose 20 packets I am dead and I close all the valves I have
 #define AWAKE_TIME_COUNTER 2 //if I do not receive 3 packets I awake 1 minute compleat just one time
