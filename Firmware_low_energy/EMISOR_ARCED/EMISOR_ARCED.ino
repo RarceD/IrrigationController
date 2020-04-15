@@ -1,7 +1,4 @@
-#include <JamAtm-Vyrsa.h>
-#include <SimpleTimer.h>
-#include <SoftwareSerial.h>
-// #include <JamSleep.h>
+#include "Emisor_RarceD.h"
 
 #define DEBUG_ON
 #ifdef DEBUG_ON
@@ -11,44 +8,12 @@
 #define DPRINT(...)
 #define DPRINTLN(...)
 #endif
-#define RF_RST 27
-#define INT_RF 2
-#define INT_RTC 14
-#define CS_M 22
-#define CS_RF 23
-#define VREF_IN 24
-#define VREF_EXT 29
-#define PG_RXD 16
-#define PG_TXD 17
-#define SIM_PWR 26
-#define SIM_AWK 21
-#define LED_SETUP 3
-#define PCINT_PIN 18
-#define PCMSK *digitalPinToPCMSK(PCINT_PIN)
-#define PCINT digitalPinToPCMSKbit(PCINT_PIN)
-#define PCPIN *portInputRegister(digitalPinToPort(PCINT_PIN))
 
-#define TX_PWR 20
-#define CLIENT_ADDRESS 2
-#define SERVER_ADDRESS 1
-
-#define FLASH_SYS_DIR 0x044000
-
-#define MAX_NODE_NUMBER 4
-#define MAX_MANUAL_TIMERS 20
-#define MAX_NUM_MESSAGES 15
-#define UUID_LENGTH 16
-#define TIME_RESPOSE 50000
 typedef struct
 {
   uint8_t id;
   uint8_t nChild;
-  char devUuid[UUID_LEN];
-  uint8_t oasisRfId[MAX_CHILD];
-  char oasisUuid[MAX_CHILD][UUID_LEN];
-  uint8_t childValves[MAX_CHILD][4];
 } sysVar;
-
 typedef struct
 {
   uint8_t UUID_RF[2];
@@ -100,8 +65,13 @@ typedef struct
   uint8_t offset;
   uint32_t counter;
 } ack_oasis_rf;
-
-Jam jam; // All the structs defined
+typedef enum
+{
+  MODE_WAIT,
+  MODE_SEND_OASIS,
+  MODE_LISTEN_OASIS,
+  MODE_CHECK_PROGRAMS
+} MACHINE_STATES;
 sysVar sys;
 sys_rf_info sys_rf;
 manual man; //manual timers
@@ -137,11 +107,12 @@ bool start_programA, start_programB, start_programC, start_programD, start_progr
 bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
 
 bool oasis_actions;
+bool oasis_listen;
 bool pg_interact_while_radio;
 bool auto_program_flag;
 uint8_t counter_syn;
 uint8_t rf_msg_tries;
-
+uint8_t machine_states;
 void setup()
 {
 #ifdef DEBUG_ON
@@ -160,7 +131,7 @@ void setup()
   digitalWrite(SIM_AWK, HIGH);
   oldPort = PCPIN;
   PCMSK |= (1 << PCINT);
-  jam.ledBlink(LED_SETUP, 100);
+  ledBlink(LED_SETUP, 100);
   softSerial.begin(9600);
   flash.powerUp();
   flash.begin();
@@ -178,7 +149,7 @@ void setup()
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   manager.init();
   manager.setRetries(1);
-  manager.setTimeout(175);
+  manager.setTimeout(50);
   driver.setTxPower(20, false);
   SWire.begin();
   rtc.begin();
@@ -198,7 +169,7 @@ void setup()
   rtc.setTime(hund, sec, minute, hour, date, month, year, day);
   */
   rtc.setAlarmMode(6);
-  rtc.setAlarm(55, 0, 0, 0, 0);
+  rtc.setAlarm(50, 0, 0, 0, 0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
   DPRINT(rtc.stringTime());
@@ -210,8 +181,8 @@ void setup()
   else
     day_week_pg = rtc.getWeekday();
   change_time_pg(rtc.getYear(), rtc.getMonth(), rtc.getDate(), day_week_pg, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
-  jam.ledBlink(LED_SETUP, 1000);
-  timer_check = timerCheck.setInterval(20000, check_time);
+  ledBlink(LED_SETUP, 1000);
+  // timer_check = timerCheck.setInterval(20000, check_time);
   radio_waitting_msg.num_message_flags = 0;
   for (int i = 0; i < sizeof(data); i++)
     data[i] = 'z';
@@ -228,18 +199,21 @@ void setup()
 void loop()
 {
   //I am continously listen to the nodes actions, if something happend then I save
-  if (manager.available()) // Detect radio activity and find id of the nodes
+  if (oasis_listen)
   {
-    uint8_t len = sizeof(buf);
-    manager.recvfromAck(buf + ack.offset, &len); //Save all the info received in buff for later analize
-    ack.offset += len;                           //increse the pointer in the buffer for not overlapping the msg
-    if (!ack.clear)
-      ack.counter = millis();
-    ack.clear = true;
-    Serial.println((char*)buf);
+    if (manager.available()) // Detect radio activity and find id of the nodes
+    {
+      uint8_t len = sizeof(buf);
+      manager.recvfromAck(buf + ack.offset, &len); //Save all the info received in buff for later analize
+      ack.offset += len;                           //increse the pointer in the buffer for not overlapping the msg
+      if (!ack.clear)
+        ack.counter = millis();
+      ack.clear = true;
+      // Serial.println((char *)buf);
+    }
   }
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
-  if ((ack.clear && (millis() - ack.counter > 12000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  if ((ack.clear && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
     for (int i = 0; i < sizeof(buf); i++)
       Serial.write(buf[i]);
@@ -329,7 +303,7 @@ void loop()
     }
     radio_waitting_msg.num_message_flags = 0;
     DPRINTLN("CLEAR MEMMORY RF FLAGS");
-  }
+  } 
   /*
   When the Serial Port of the PG is set I read what happend there ant act. If there is an inmidiate action I just write an struct 
   and when is the time to send I do it
@@ -356,7 +330,25 @@ void loop()
     intRtc = false;
     rtc.updateTime();
     DPRINTLN(rtc.stringTime());
-    oasis_actions = true;
+    if (rtc.getSeconds() > 40)
+    {
+      //I listen the ack of the nodes
+      rtc.setAlarmMode(6);
+      rtc.setAlarm(28, 0, 0, 0, 0);
+      oasis_listen = false;
+      oasis_actions = true;
+      DPRINTLN("Send oasis info");
+    }
+    else
+    {
+      //I send nodes
+      rtc.setAlarmMode(6);
+      rtc.setAlarm(59, 0, 0, 0, 0);
+      oasis_actions = false;
+      oasis_listen = true;
+      DPRINTLN("Listen oasis ack");
+    }
+
     ack.counter = 0;
   }
   if (oasis_actions) // Its the time of sendding the info
@@ -370,7 +362,7 @@ void loop()
     rf_msg_tries++;
     while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
     {
-      if (millis() - start >= 400) // Every 400ms I send a message to the oasis hoping they will receive them
+      if (millis() - start >= 20) // Every 400ms I send a message to the oasis hoping they will receive them
       {
         //prepare_message  --- This function spends 400ms to compleat
         for (uint8_t i = 0; i < sizeof(data); i++)
@@ -390,9 +382,9 @@ void loop()
           else if (radio_waitting_msg.request_STOP_ALL[msg])
             send_nodo(index, sys_rf.UUID_RF, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
         //This is for debugging
-        for (uint8_t data_index = 0; data_index < sizeof(data); data_index++)
-          Serial.write(data[data_index]);
-        DPRINTLN(" ");
+        //for (uint8_t data_index = 0; data_index < sizeof(data); data_index++)
+        //  Serial.write(data[data_index]);
+        DPRINTLN("sent");
         counter_syn++;
         manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS); //Send to the receivers
         start = millis();
@@ -849,7 +841,8 @@ void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory i
   int index;
   String str, aux;
   uint8_t p, a, v, m, ptr;
-  i = PAYLOAD_INDEX + strlen(sys.devUuid) + 1;
+  char devUuid[UUID_LEN];
+  i = PAYLOAD_INDEX + strlen(devUuid) + 1;
 
   if (pos == 1)
   {                                  //if bit 1 is 1
@@ -988,7 +981,6 @@ void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory i
     { //for each child
       DPRINT("Send change to OASIS: ");
       DPRINTLN(j + 1);
-      jam.fillWithString(data, String(sys.oasisUuid[j]), PAYLOAD_INDEX); //add child uuid to data
       //comError[j] = !sendCommand(data, i, sys.oasisRfId[j]);             //send command to child
     }
     // checkComError(i);
@@ -1049,11 +1041,8 @@ void getAllFromPG() //this function get all data from PG
       aux = pg.substring(index, pg.indexOf(" ", index));
       if (aux != "FF")
       {
-        sys.childValves[m][n] = strtol(aux.c_str(), NULL, HEX) + 1;
         valveDef[m] = 1;
       }
-      else
-        sys.childValves[m][n] = 0;
       index += aux.length() + 1;
       if (n == 3)
       {
@@ -1080,7 +1069,7 @@ void pgCommand(uint8_t command[], uint8_t len)
 
   uint32_t millix;
   uint8_t i, attempt = 3;
-  jam.calcrc((char *)command, len - 2);
+  calcrc((char *)command, len - 2);
 
   while (attempt)
   {
@@ -1318,30 +1307,7 @@ void listening_pg()
     }
   }
 }
-uint8_t hex2int(char ch) // For converting the manual valve action
-{
-  if (ch >= '0' && ch <= '9')
-    return ch - '0';
-  if (ch >= 'A' && ch <= 'F')
-    return ch - 'A' + 10;
-  if (ch >= 'a' && ch <= 'f')
-    return ch - 'a' + 10;
-  return -1;
-}
-String getValue(String data, char separator, int index)
-{
-  int found = 0;
-  int strIndex[] = {0, -1};
-  int maxIndex = data.length() - 1;
-  for (int i = 0; i <= maxIndex && found <= index; i++)
-    if (data.charAt(i) == separator || i == maxIndex)
-    {
-      found++;
-      strIndex[0] = strIndex[1] + 1;
-      strIndex[1] = (i == maxIndex) ? i + 1 : i;
-    }
-  return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
-}
+
 void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
   intRtc = true; //set flag to indicate that rtc interrupt was triggered
@@ -1368,7 +1334,7 @@ void change_time_pg(uint8_t year, uint8_t month, uint8_t day, uint8_t week, uint
     time = '0' + time;
   cmd_set_time[15] = time.charAt(0);
   cmd_set_time[16] = time.charAt(1);
-  jam.calcrc((char *)cmd_set_time, sizeof(cmd_set_time) - 2);
+  calcrc((char *)cmd_set_time, sizeof(cmd_set_time) - 2);
   softSerial.write(cmd_set_time, sizeof(cmd_set_time)); //real send to PG
   delay(1000);
   time = String(month, HEX);
@@ -1379,7 +1345,7 @@ void change_time_pg(uint8_t year, uint8_t month, uint8_t day, uint8_t week, uint
   cmd_write_data[15] = '1';
   cmd_write_data[17] = time.charAt(0);
   cmd_write_data[18] = time.charAt(1);
-  jam.calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
   softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
   delay(1000);
   time = String(day, HEX);
@@ -1388,7 +1354,7 @@ void change_time_pg(uint8_t year, uint8_t month, uint8_t day, uint8_t week, uint
   cmd_write_data[15] = '2';
   cmd_write_data[17] = time.charAt(0);
   cmd_write_data[18] = time.charAt(1);
-  jam.calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
   softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
   delay(1000);
   time = String(year, HEX);
@@ -1397,7 +1363,7 @@ void change_time_pg(uint8_t year, uint8_t month, uint8_t day, uint8_t week, uint
   cmd_write_data[15] = '0';
   cmd_write_data[17] = time.charAt(0);
   cmd_write_data[18] = time.charAt(1);
-  jam.calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
   softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
 }
 void check_time() // This function test if the current time fix with the program time
@@ -1576,12 +1542,6 @@ void waitValveCloseF()
   index_prog_F++;
   start_programF = true;
 }
-int freeRam()
-{
-  extern int __heap_start, *__brkval;
-  int v;
-  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
-}
 void print_flash_mem()
 {
   DPRINT("The UUID of this devise is: ");
@@ -1591,4 +1551,10 @@ void print_flash_mem()
   DPRINT("I have: ");
   DPRINT(sys_rf.NUMBER_NODES);
   DPRINTLN(" oasis asigned");
+}
+void ledBlink(uint8_t pin, uint64_t milli)
+{
+  digitalWrite(pin, HIGH);
+  delay(milli);
+  digitalWrite(pin, LOW);
 }
