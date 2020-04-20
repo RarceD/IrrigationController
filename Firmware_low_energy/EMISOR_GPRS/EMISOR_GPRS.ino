@@ -176,6 +176,8 @@ void setup()
 void loop()
 {
   mqttClient.loop();
+  listening_pg();
+
   if (!mqttClient.connected())
   {
     Serial.println("Mqtt connection fail");
@@ -183,7 +185,7 @@ void loop()
     delay(5);
   }
   // Every 20 seconds I publish that I am ALIVE
-  if (millis() - millix >= 30000) // Printing that I am not dead
+  if (millis() - millix >= 60000) // Printing that I am not dead
   {
     uint16_t b, c;
     analogReference(INTERNAL);
@@ -1487,4 +1489,165 @@ int freeRam()
   extern int __heap_start, *__brkval;
   int v;
   return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+}
+
+void listening_pg()
+{
+  String pg;
+  char pgData[PG_MAX_LEN];
+  uint32_t millix;
+  bool intPg = false;
+  uint8_t i = 0;     //initialize index
+  millix = millis(); //start timer
+  while ((unsigned long)(millis() - millix) < 100)
+  { //while timer doesn't reach 100 ms
+    while (softSerial.available())
+    {                                  //while there is data to read
+      pgData[i++] = softSerial.read(); //read byte and save it
+      millix = millis();
+    }
+  }
+  if (i > 10)
+    intPg = true;
+
+  if (intPg)
+  {
+    //if int pg was triggered
+    intPg = false;       //clear int pg flag
+    pgData[i] = '\0';    //add end of char
+    pg = String(pgData); //convert message received into string
+    DPRINT("PG: ");
+    DPRINTLN(pg);
+    if (pg.indexOf("MANVALV START") > 0)
+    {
+      DPRINTLN("ES EL COMANDO DE ABRIR VALVULA MANUAL");
+      char valve_num_aux[2];
+      valve_num_aux[0] = pgData[pg.indexOf("MANVALV START") + 14];
+      valve_num_aux[1] = pgData[pg.indexOf("MANVALV START") + 15];
+      uint8_t valve_number = hex2int(valve_num_aux[0]) * 16 + hex2int(valve_num_aux[1]);
+      uint8_t valve_time_hour = hex2int(pgData[pg.indexOf("MANVALV START") + 14 + 3]) * 10 + hex2int(pgData[pg.indexOf("MANVALV START") + 15 + 3]);
+      uint8_t valve_time_min = hex2int(pgData[pg.indexOf("MANVALV START") + 14 + 3 + 2]) * 10 + hex2int(pgData[pg.indexOf("MANVALV START") + 15 + 3 + 2]);
+      DPRINT(valve_number);
+      DPRINT(" valvula - ");
+      DPRINT(valve_time_hour);
+      DPRINT(" horas - ");
+      DPRINT(valve_time_min);
+      DPRINTLN(" minutos. ");
+      bool open = true;
+      if (valve_time_min == 0 && valve_time_hour == 0)
+        open = false;
+      json_valve_action(open, valve_number, valve_time_hour, valve_time_min);
+    }
+    if (pg.indexOf("MANVALV STOP") > 0)
+    {
+      DPRINTLN("ES EL COMANDO DE ABRIR VALVULA MANUAL");
+      char valve_num_aux[2];
+      valve_num_aux[0] = pgData[pg.indexOf("MANVALV START") + 14];
+      valve_num_aux[1] = pgData[pg.indexOf("MANVALV START") + 15];
+      uint8_t valve_number = hex2int(valve_num_aux[0]) * 16 + hex2int(valve_num_aux[1]);
+      json_valve_action(false, valve_number, 0, 0);
+    }
+    else if (pg.indexOf("MANPRG START#") > 0)
+    {
+      json_program_action(true, (pgData[pg.indexOf("MANPRG START#") + 13]));
+    }
+    else if (pg.indexOf("MANPRG STOP#") > 0)
+    {
+      json_program_action(false, (pgData[pg.indexOf("MANPRG STOP#") + 12]));
+    }
+    else if (pg.indexOf("STOP ALL") > 0)
+    {
+      DPRINTLN("Paro TODO"); // I clear all the variables of the programs
+    }
+    else if (pg.indexOf("SET TIME#") > 0)
+    {
+      uint8_t time_hours = (pgData[pg.indexOf("SET TIME#") + 9] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 10] - '0');
+      uint8_t time_min = (pgData[pg.indexOf("SET TIME#") + 9 + 2] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 10 + 2] - '0');
+      uint8_t time_day_week = (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6] - '0');
+      uint8_t time_year = (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 2] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 3] - '0');
+      uint8_t time_month = (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 2 + 2] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 3 + 2] - '0');
+      uint8_t time_day = (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 2 + 2 + 2] - '0') * 10 + (pgData[pg.indexOf("SET TIME#") + 9 + 2 + 6 + 3 + 2 + 2] - '0');
+      DPRINT(" Hora: ");
+      DPRINT(time_hours);
+      DPRINT(":");
+      DPRINT(time_min);
+      DPRINT(" Fecha: ");
+      DPRINT(time_day_week);
+      DPRINT(" Hora: ");
+      DPRINT(time_year);
+      DPRINT("/");
+      DPRINT(time_month);
+      DPRINT("/");
+      DPRINT(time_day);
+      rtc.updateTime();
+      DPRINTLN("");
+      rtc.setTime(0, 0, time_min, time_hours, time_day, time_month, time_year, time_day_week);
+      DPRINTLN(rtc.stringTime());
+      DPRINTLN(rtc.stringDate());
+
+      //send_nodo(1, sys_rf.UUID_RF, REQUEST_TIME, 0, 0, 0, asignacion);
+    }
+    else if (pg.indexOf("PAIRING#") > 0)
+    {
+      //I always obtein the number of oasis without one unit due to format 8bit vs 16 bits
+      String valve_number = getValue(pg, '#', 1);
+      int valve_number_true = (int)strtol(&valve_number[0], NULL, 16);
+      // DPRINTLN(valve_number_true);
+      String valve_assigned;
+      int oasis_valves[4];
+      for (int k = 0; k < 4; k++)
+      {
+        valve_assigned = getValue(getValue(pg, '#', 2), ' ', k);
+        oasis_valves[k] = (int)strtol(&valve_assigned[0], NULL, 16);
+        DPRINTLN(oasis_valves[k]);
+      }
+
+      //send_nodo(1, sys_rf.UUID_RF, REQUEST_ASSIGNED_VALVES, valve_number_true + 1, 0, 0, temp_valve);
+    }
+    else if (pg.indexOf("SELECTOR#06") > 0)
+    {
+      DPRINTLN("STOP");
+    }
+    else if (pg.indexOf("MEMMORY#") > 0)
+    {
+      digitalWrite(LED_SETUP, HIGH);
+      DPRINTLN("PG TOUCH");
+      getAllFromPG();
+      for (int i = 0; i < 6; i++)
+      {
+        json_clear_starts(i);
+        delay(50);
+        json_week_days(i, prog[i].wateringDay);
+        delay(50);
+        json_program_starts(i);
+        delay(50);
+      }
+      digitalWrite(LED_SETUP, LOW);
+    }
+  }
+}
+uint8_t hex2int(char ch) // For converting the manual valve action
+{
+  if (ch >= '0' && ch <= '9')
+    return ch - '0';
+  if (ch >= 'A' && ch <= 'F')
+    return ch - 'A' + 10;
+  if (ch >= 'a' && ch <= 'f')
+    return ch - 'a' + 10;
+  return -1;
+}
+String getValue(String data, char separator, int index)
+{
+  
+  int found = 0;
+  int strIndex[] = {0, -1};
+  int maxIndex = data.length() - 1;
+  for (int i = 0; i <= maxIndex && found <= index; i++)
+    if (data.charAt(i) == separator || i == maxIndex)
+    {
+      found++;
+      strIndex[0] = strIndex[1] + 1;
+      strIndex[1] = (i == maxIndex) ? i + 1 : i;
+    }
+  return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
