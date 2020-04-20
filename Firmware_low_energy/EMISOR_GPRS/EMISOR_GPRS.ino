@@ -620,6 +620,37 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     else if (sTopic.indexOf("general") != -1) //nothing to do here
     {
       send_web("/general", sizeof("/general"), identifier);
+      char pump_delay = parsed["pump_delay"].as<char>();
+      uint8_t valve_delay = parsed["valve_delay"].as<uint8_t>();
+      cmd_write_data[13] = '0';
+      cmd_write_data[14] = '5';
+      cmd_write_data[15] = '1';
+      String ret_valve = String(valve_delay, HEX);
+      if (ret_valve.length() == 1)
+        ret_valve = '0' + ret_valve;
+      ret_valve.toUpperCase();
+      cmd_write_data[17] = ret_valve.charAt(0);
+      cmd_write_data[18] = ret_valve.charAt(1);
+      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+      softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+      for (i = 0; i < sizeof(cmd_write_data); i++)
+        Serial.write(cmd_write_data[i]);
+      Serial.println("");
+      delay(1000);
+      cmd_write_data[15] = '0';
+      String ret_mv = String(pump_delay, HEX);
+      if (ret_mv.length() == 1)
+        ret_mv = '0' + ret_mv;
+      ret_mv.toUpperCase();
+      cmd_write_data[17] = ret_mv.charAt(0);
+      cmd_write_data[18] = ret_mv.charAt(1);
+      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+      softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+      for (i = 0; i < sizeof(cmd_write_data); i++)
+        Serial.write(cmd_write_data[i]);
+
+      //TODO: Write in PG MEMMORY
+
     }
     else if (sTopic.indexOf("stop") != -1) //nothing to do here
     {

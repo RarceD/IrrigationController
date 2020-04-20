@@ -14,7 +14,7 @@ static uint8_t cmd_set_time[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'T', 'I', 'M', 
 
 // static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', '4', '0', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', '5', '0', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
@@ -233,7 +233,42 @@ void loop()
       softSerial.write(cmd_write_data, sizeof(cmd_write_data));
       for (i = 0; i < sizeof(cmd_write_data); i++)
         Serial.write(cmd_write_data[i]);
-    } //prexx 'k'
+    }             //prexx 'k'ç
+    if (a == 108) //l
+
+    {
+      Serial.println("");
+
+      char value_valve = 59;
+      char value_mv = -12;
+
+      cmd_write_data[13] = '0';
+      cmd_write_data[14] = '5';
+      cmd_write_data[15] = '1';
+      String ret_valve = String(value_valve, HEX);
+      if (ret_valve.length() == 1)
+        ret_valve = '0' + ret_valve;
+      ret_valve.toUpperCase();
+      cmd_write_data[17] = ret_valve.charAt(0);
+      cmd_write_data[18] = ret_valve.charAt(1);
+      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+      softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+      for (i = 0; i < sizeof(cmd_write_data); i++)
+        Serial.write(cmd_write_data[i]);
+      Serial.println("");
+      delay(1000);
+      cmd_write_data[15] = '0';
+      String ret_mv = String(value_mv, HEX);
+      if (ret_mv.length() == 1)
+        ret_mv = '0' + ret_mv;
+      ret_mv.toUpperCase();
+      cmd_write_data[17] = ret_mv.charAt(0);
+      cmd_write_data[18] = ret_mv.charAt(1);
+      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+      softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+      for (i = 0; i < sizeof(cmd_write_data); i++)
+        Serial.write(cmd_write_data[i]);
+    }
   }
 
   while (softSerial.available())
@@ -449,7 +484,7 @@ void change_time_pg(uint8_t week, uint8_t hours, uint8_t minutes) //, uint8_t *d
   cmd_write_data[18] = '5';
   calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
   softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-    for (i = 0; i < sizeof(cmd_write_data); i++)
+  for (i = 0; i < sizeof(cmd_write_data); i++)
     Serial.write(cmd_write_data[i]);
 }
 void change_week_pg(char *date, uint8_t lenght, uint8_t program)
