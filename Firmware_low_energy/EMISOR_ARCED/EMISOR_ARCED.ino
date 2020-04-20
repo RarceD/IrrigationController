@@ -106,11 +106,10 @@ uint8_t index_prog_A, index_prog_B, index_prog_C, index_prog_D, index_prog_E, in
 bool start_programA, start_programB, start_programC, start_programD, start_programE, start_programF; //This is a shame
 bool start_programA_ones, start_programB_ones, start_programC_ones, start_programD_ones, start_programE_ones, start_programF_ones;
 
-bool oasis_actions;
+bool oasis_send;
 bool oasis_listen;
 bool pg_interact_while_radio;
 bool auto_program_flag;
-uint8_t counter_syn;
 uint8_t rf_msg_tries;
 uint8_t machine_states;
 void setup()
@@ -169,7 +168,7 @@ void setup()
   rtc.setTime(hund, sec, minute, hour, date, month, year, day);
   */
   rtc.setAlarmMode(6);
-  rtc.setAlarm(50, 0, 0, 0, 0);
+  rtc.setAlarm(59, 0, 0, 0, 0);
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
   DPRINT(rtc.stringTime());
@@ -303,7 +302,7 @@ void loop()
     }
     radio_waitting_msg.num_message_flags = 0;
     DPRINTLN("CLEAR MEMMORY RF FLAGS");
-  } 
+  }
   /*
   When the Serial Port of the PG is set I read what happend there ant act. If there is an inmidiate action I just write an struct 
   and when is the time to send I do it
@@ -336,7 +335,7 @@ void loop()
       rtc.setAlarmMode(6);
       rtc.setAlarm(28, 0, 0, 0, 0);
       oasis_listen = false;
-      oasis_actions = true;
+      oasis_send = true;
       DPRINTLN("Send oasis info");
     }
     else
@@ -344,14 +343,13 @@ void loop()
       //I send nodes
       rtc.setAlarmMode(6);
       rtc.setAlarm(59, 0, 0, 0, 0);
-      oasis_actions = false;
+      oasis_send = false;
       oasis_listen = true;
       DPRINTLN("Listen oasis ack");
     }
-
     ack.counter = 0;
   }
-  if (oasis_actions) // Its the time of sendding the info
+  if (oasis_send) // Its the time of sendding the info
   {
     // Always the first message have to be sync
     uint32_t start = millis();
@@ -360,6 +358,31 @@ void loop()
     pg_interact_while_radio = false;
     // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
     rf_msg_tries++;
+    uint8_t data[150];
+    uint8_t preamble[] = "00XXA1##TIME:H:XX/M:XX/S:XX##MANVAL#012#01:03##ASIGNED#021#045:099:004:035##STOP#ALL________";
+    rtc.updateTime();
+    Serial.println(rtc.stringTime());
+    uint8_t offset = 8;
+    preamble[offset + 7] = (rtc.getHours() / 10) + '0';
+    preamble[offset + 8] = (rtc.getHours() % 10) + '0';
+    preamble[offset + 12] = (rtc.getMinutes() / 10) + '0';
+    preamble[offset + 13] = (rtc.getMinutes() % 10) + '0';
+    preamble[offset + 17] = (rtc.getSeconds() / 10) + '0';
+    preamble[offset + 18] = (rtc.getSeconds() % 10) + '0';
+    //TODO: Integrate the UUID in the msg
+    memcpy(data, preamble, sizeof(preamble));
+    uint8_t times = 6; //6 times better
+    while (times-- > 0)
+    {
+      driver.send((const uint8_t *)data, sizeof(data));
+      driver.waitPacketSent();
+    }
+    for (int i = 0; i < 100; i++)
+      Serial.write(data[i]);
+    Serial.println(" ");
+    DPRINTLN(millis());
+    /*
+    uint8_t counter_syn = 0;
     while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
     {
       if (millis() - start >= 20) // Every 400ms I send a message to the oasis hoping they will receive them
@@ -392,7 +415,9 @@ void loop()
       listening_pg();
     }
     counter_syn = 0;
-    oasis_actions = false;
+
+    */
+    oasis_send = false;
   }
   /*
   Every 30 seconds I test if the irrigation time is the same as the current RTC time. The function that check this is: check_time();
