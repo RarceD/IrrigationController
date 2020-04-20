@@ -70,6 +70,7 @@ typedef struct
   uint8_t start[6][2];
   uint16_t irrigTime[128];
 } program;
+bool program_active[6];
 
 TinyGsm modem(Serial1);
 TinyGsmClient client(modem);
@@ -326,6 +327,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
   strcpy(json, (char *)payload); //one alternative is using c fucntion to convert
   JsonObject &parsed = jsonBuffer.parseObject(json);
+  DPRINTLN(freeRam());
   //DPRINT("Mqtt received: ");
   //for (int i = 0; i < sizeof(json); i++)
   //  Serial.write(json[i]);
@@ -791,6 +793,18 @@ void action_valve_pg(bool state, uint8_t valve, uint8_t time_hours, uint8_t time
 }
 void action_prog_pg(uint8_t state, char program)
 {
+  char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+  for (uint8_t index_program = 0; index_program < sizeof(program_letters); index_program++)
+    if (program_letters[index_program] == program)
+    {
+      DPRINTLN("El valor del programa es: ");
+      Serial.write(program);
+      if (state == 1)
+        program_active[index_program] = true;
+      else
+        program_active[index_program] = false;
+    }
+
   if (state == 1)
   {
     cmd_start_manprg[15] = program;
@@ -1256,17 +1270,27 @@ void json_query(const char id[], char status[])
                                   //11,3 ; 13.8
                                   //12 ; 14.6
 
-  int bat_percentage = map((int)round(bat), 6, 13, 5, 100);
+  int bat_percentage = map((int)round(bat), 6, 15, 5, 100);
+  if (bat_percentage > 100)
+    bat_percentage = 100;
   root["id"] = String(id);
   root["status"] = String(status);
   JsonObject &battery = root.createNestedObject("battery");
-  battery["com"] = bat_percentage - 2;
+  battery["com"] = bat_percentage;
   battery["prog"] = bat_percentage;
   JsonObject &oasis = battery.createNestedObject("oasis");
   oasis["id"] = 1;
   oasis["bat"] = 78;
-  root["connection"] = map(modem.getSignalQuality(), 15, 35, 5, 100);
+  root["connection"] = map(modem.getSignalQuality(), 15, 30, 5, 100);
+  //I send the time to the web:
+  root["date"] = String(rtc.stringDate()) + " " + String(rtc.stringTime());
+  //I check if there is any prpogram active and I send to the web:
   JsonArray &active = root.createNestedArray("prog_active");
+  char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+  for (uint8_t prog = 0; prog < 6; prog++)
+    if (program_active[prog])
+      active.add(String(program_letters[prog]));
+  //I generate the main json frame
   char json[300];
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/query").c_str(), (const uint8_t *)json, strlen(json), false);
