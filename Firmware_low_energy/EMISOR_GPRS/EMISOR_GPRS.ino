@@ -1542,8 +1542,8 @@ void listening_pg()
     {
       DPRINTLN("ES EL COMANDO DE ABRIR VALVULA MANUAL");
       char valve_num_aux[2];
-      valve_num_aux[0] = pgData[pg.indexOf("MANVALV START") + 14];
-      valve_num_aux[1] = pgData[pg.indexOf("MANVALV START") + 15];
+      valve_num_aux[0] = pgData[pg.indexOf("MANVALV STOP") + 13];
+      valve_num_aux[1] = pgData[pg.indexOf("MANVALV STOP") + 14];
       uint8_t valve_number = hex2int(valve_num_aux[0]) * 16 + hex2int(valve_num_aux[1]);
       json_valve_action(false, valve_number, 0, 0);
     }
@@ -1638,7 +1638,7 @@ uint8_t hex2int(char ch) // For converting the manual valve action
 }
 String getValue(String data, char separator, int index)
 {
-  
+
   int found = 0;
   int strIndex[] = {0, -1};
   int maxIndex = data.length() - 1;
