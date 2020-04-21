@@ -620,8 +620,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     else if (sTopic.indexOf("general") != -1) //nothing to do here
     {
       send_web("/general", sizeof("/general"), identifier);
-      char pump_delay = parsed["pump_delay"].as<char>();
+      uint8_t pump_delay = parsed["pump_delay"].as<uint8_t>();
       uint8_t valve_delay = parsed["valve_delay"].as<uint8_t>();
+      if (pump_delay < 0)
+        pump_delay = 0xFF + pump_delay + 1;
       cmd_write_data[13] = '0';
       cmd_write_data[14] = '5';
       cmd_write_data[15] = '1';
@@ -636,7 +638,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       for (i = 0; i < sizeof(cmd_write_data); i++)
         Serial.write(cmd_write_data[i]);
       Serial.println("");
-      delay(1000);
+      delay(800);
       cmd_write_data[15] = '0';
       String ret_mv = String(pump_delay, HEX);
       if (ret_mv.length() == 1)
@@ -650,7 +652,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         Serial.write(cmd_write_data[i]);
 
       //TODO: Write in PG MEMMORY
-
     }
     else if (sTopic.indexOf("stop") != -1) //nothing to do here
     {

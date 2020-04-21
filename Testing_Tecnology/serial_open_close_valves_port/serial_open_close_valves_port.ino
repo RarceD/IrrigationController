@@ -24,9 +24,6 @@ static uint8_t cmd_ok[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'O', 'A', 'S', 'I', '
 static uint8_t cmd_nok[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'O', 'A', 'S', 'I', 'S', 0x23, ' ', ' ', 0x23, 'N', 'O', 'K', 0x23, 0, 0};
 
 uint16_t i, j;
-int calcrc(char ptr[], int length);
-void open_valve_pg(bool state, uint8_t valve, uint8_t time_hours, uint8_t time_minutes);
-void action_prog_pg(bool state, char program);
 
 /******************************************************************* setup section ************************************************************************************/
 void setup()
@@ -239,9 +236,10 @@ void loop()
     {
       Serial.println("");
 
-      char value_valve = 59;
-      char value_mv = -12;
-
+      uint8_t value_valve = 39;
+      uint8_t value_mv = -56;
+      if (value_mv < 0)
+        value_mv = 0xFF + value_mv + 1;
       cmd_write_data[13] = '0';
       cmd_write_data[14] = '5';
       cmd_write_data[15] = '1';
