@@ -70,6 +70,12 @@ typedef struct
   uint8_t start[6][2];
   uint16_t irrigTime[128];
 } program;
+typedef struct //If I recevived a stop command in the web I have to know what to stop
+{
+  bool valves[14];
+  bool programs[6];
+} active_to_stop;
+
 bool program_active[6];
 
 TinyGsm modem(Serial1);
@@ -85,6 +91,7 @@ Sleep lowPower;
 
 Jam jam;
 sysVar sys;
+active_to_stop active;
 
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[50];
@@ -152,24 +159,18 @@ void setup()
   print_flash();
   connectSIM();
   connectMqtt();
-  delay(500);
   millix = millis();
-  char assigned[] = {21, 34, 54, 67};
 
   //At re-starting the pg is going to read all the info and send it to the web
-  Serial.print("Sendding to app---");
-  DPRINTLN(freeRam());
   // getAllFromPG(); // Have no idea why i can't do both at the same time
   // json_connect_app(); //for sendding to the web that everithing is ok
+  // char assigned[] = {21, 34, 54, 67};
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
   // delay(500);
   // json_valve_action(false, 3, 0, 5);
   // delay(500);
   // json_program_action(false, 'B');
-
-  Serial.print("Finish sending---");
-  DPRINTLN(freeRam());
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -200,12 +201,12 @@ void loop()
       c = analogRead(PA0);
       delay(1);
     }
-    float bat = b * 0.0190 - 2.0;
+    float bat = b * 0.0190 - 2.0 - 5.9;
     char json[40];
     DynamicJsonBuffer jsonBuffer(32);
     JsonObject &root = jsonBuffer.createObject();
     root.set("voltage", bat);
-    root.set("freeRam", String(freeRam()) + "B");
+    root.set("freeRam", String(float(freeRam()/1024.0)) + "kB");
     root.printTo(json);
     mqttClient.publish((String(sys.devUuid) + "/uptime").c_str(), (const uint8_t *)json, strlen(json), false);
     DPRINTLN(freeRam());
@@ -223,7 +224,6 @@ void loop()
       pressed_times = false;
       Serial.println("BUTTON PRESSED");
       delay(500);
-      DPRINTLN(freeRam());
       getAllFromPG();
       for (int i = 0; i < 6; i++)
       {
@@ -329,7 +329,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   DynamicJsonBuffer jsonBuffer(MAX_JSON_SIZE);
   strcpy(json, (char *)payload); //one alternative is using c fucntion to convert
   JsonObject &parsed = jsonBuffer.parseObject(json);
-  DPRINTLN(freeRam());
   //DPRINT("Mqtt received: ");
   //for (int i = 0; i < sizeof(json); i++)
   //  Serial.write(json[i]);
@@ -370,14 +369,15 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         {
           LOG("APAGAR LA: ");
           LOGLN(valve_number[index_oasis]);
-          // radio_waitting_msg.request_MANUAL[radio_waitting_msg.num_message_flags] = true;
-          // radio_waitting_msg.valve_info[0][radio_waitting_msg.num_message_flags] = valve_number[index_oasis];
-          // radio_waitting_msg.valve_info[1][radio_waitting_msg.num_message_flags] = 0;
-          // radio_waitting_msg.valve_info[2][radio_waitting_msg.num_message_flags++] = 0;
         }
         if (valve_number[index_oasis] <= 14) //Check if the valve is for me and then sent to the pg
         {
           action_valve_pg(valve_action[index_oasis], valve_number[index_oasis], valve_hours[index_oasis], valve_min[index_oasis]);
+          //If is for me I active the flag to stop in case web want it
+          if (valve_action[index_oasis] == 0)
+            active.valves[valve_number[index_oasis] - 1] = false;
+          else
+            active.valves[valve_number[index_oasis] - 1] = true;
           delay(1500);
         }
       }
@@ -394,6 +394,13 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       send_web("/manprog", sizeof("/manprog"), identifier); // I send ack to the app
       delay(500);
       action_prog_pg(activate, manual_program.charAt(0)); //I send the command tom PG
+      char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+      for (uint8_t index_prog; index_prog < 6; index_prog++)
+        if (program_letters[index_prog] == manual_program.charAt(0))
+          if (activate == 1)
+            active.programs[index_prog] = true;
+          else
+            active.programs[index_prog] = false;
     }
     else if (sTopic.indexOf("oasis") != -1) //done
     {
@@ -420,7 +427,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 
       send_web("/oasis", sizeof("/oasis"), identifier);
     }
-    else if (sTopic.indexOf("program") != -1) //fail valves time
+    else if (sTopic.indexOf("program") != -1) //done
     {
       //I parse the letter of the program
       send_web("/program", sizeof("/program"), identifier);
@@ -617,7 +624,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     {
       json_query(String(identifier).c_str(), "AUTO");
     }
-    else if (sTopic.indexOf("general") != -1) //nothing to do here
+    else if (sTopic.indexOf("general") != -1) //receive the delay between valves and mv and valve
     {
       send_web("/general", sizeof("/general"), identifier);
       uint8_t pump_delay = parsed["pump_delay"].as<uint8_t>();
@@ -653,12 +660,24 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 
       //TODO: Write in PG MEMMORY
     }
-    else if (sTopic.indexOf("stop") != -1) //nothing to do here
+    else if (sTopic.indexOf("stop") != -1) //I stop all the stuff open 
     {
       send_web("/stop", sizeof("/stop"), identifier);
+      uint8_t index_close = 0;
+      for (; index_close < 14; index_close++)
+        if (active.valves[index_close]){
+          action_valve_pg(false, index_close + 1, 0, 0);
+          delay(1000);
+        }
+      char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+      for (index_close = 0; index_close < 6; index_close++)
+        if (active.programs[index_close])
+        {
+            action_prog_pg(0, program_letters[index_close]); //I send the command tom PG
+            delay(1000);
+        }
     }
   }
-  DPRINTLN(freeRam());
 }
 void send_web(char *topic, unsigned int length, int id)
 {
@@ -1202,10 +1221,6 @@ void json_program_starts(uint8_t program)
   char json[150];
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
-  DPRINT("Json_program_starts: ");
-  DPRINTLN(freeRam());
-
-  // root.prettyPrintTo(Serial);
 }
 void json_program_valves(uint8_t program)
 {
@@ -1241,7 +1256,6 @@ void json_program_valves(uint8_t program)
     }
   char json[500];
   root.printTo(json);
-  DPRINTLN(freeRam());
   mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
 }
 void json_clear_starts(uint8_t program)
@@ -1522,7 +1536,6 @@ int freeRam()
   int v;
   return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
-
 void listening_pg()
 {
   String pg;
