@@ -131,7 +131,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   /*
-  char first_mem[] = "uuid_prueba_1_10";
+  char first_mem[] = "VYR_OASIS_A1";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
@@ -163,7 +163,7 @@ void setup()
 
   //At re-starting the pg is going to read all the info and send it to the web
   // getAllFromPG(); // Have no idea why i can't do both at the same time
-  // json_connect_app(); //for sendding to the web that everithing is ok
+  //  json_connect_app(); //for sendding to the web that everithing is ok
   // char assigned[] = {21, 34, 54, 67};
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
@@ -206,7 +206,7 @@ void loop()
     DynamicJsonBuffer jsonBuffer(32);
     JsonObject &root = jsonBuffer.createObject();
     root.set("voltage", bat);
-    root.set("freeRam", String(float(freeRam()/1024.0)) + "kB");
+    root.set("freeRam", String(float(freeRam() / 1024.0)) + "kB");
     root.printTo(json);
     mqttClient.publish((String(sys.devUuid) + "/uptime").c_str(), (const uint8_t *)json, strlen(json), false);
     DPRINTLN(freeRam());
@@ -660,12 +660,13 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 
       //TODO: Write in PG MEMMORY
     }
-    else if (sTopic.indexOf("stop") != -1) //I stop all the stuff open 
+    else if (sTopic.indexOf("stop") != -1) //I stop all the stuff open
     {
       send_web("/stop", sizeof("/stop"), identifier);
       uint8_t index_close = 0;
       for (; index_close < 14; index_close++)
-        if (active.valves[index_close]){
+        if (active.valves[index_close])
+        {
           action_valve_pg(false, index_close + 1, 0, 0);
           delay(1000);
         }
@@ -673,8 +674,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       for (index_close = 0; index_close < 6; index_close++)
         if (active.programs[index_close])
         {
-            action_prog_pg(0, program_letters[index_close]); //I send the command tom PG
-            delay(1000);
+          action_prog_pg(0, program_letters[index_close]); //I send the command tom PG
+          delay(1000);
         }
     }
   }
@@ -1295,7 +1296,7 @@ void json_connect_app()
   root["model"] = "6011";
   char json[60];
   root.printTo(json);
-  mqttClient.publish((String(sys.devUuid) + "/connect").c_str(), (const uint8_t *)json, strlen(json), false);
+  mqttClient.publish("connect", (const uint8_t *)json, strlen(json), false);
 }
 void json_query(const char id[], char status[])
 {
