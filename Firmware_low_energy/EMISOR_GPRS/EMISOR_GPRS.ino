@@ -10,9 +10,14 @@
 #define CLIENT_ADDRESS 3
 #define SERVER_ADDRESS 2
 
+// #define DEBUG_ON
+#ifdef DEBUG_ON
 #define DPRINT(...) Serial.print(__VA_ARGS__)
 #define DPRINTLN(...) Serial.println(__VA_ARGS__)
-
+#else
+#define DPRINT(...)
+#define DPRINTLN(...)
+#endif
 #define LOG(...) Serial.print(__VA_ARGS__)
 #define LOGLN(...) Serial.println(__VA_ARGS__)
 
@@ -52,14 +57,8 @@ typedef enum
 typedef struct
 {
   uint8_t id;
-  uint8_t nChild;
   char devUuid[UUID_LEN];
-  uint8_t oasisRfId[MAX_CHILD];
-  char oasisUuid[MAX_CHILD][UUID_LEN];
-  uint8_t childValves[MAX_CHILD][4];
-  uint8_t master_id;
-  uint8_t UUID[UUID_LENGTH];
-  uint8_t nodes_uuid[UUID_LENGTH][MAX_NODE_NUMBER];
+
 } sysVar;
 typedef struct
 {
@@ -81,8 +80,8 @@ bool program_active[6];
 TinyGsm modem(Serial1);
 TinyGsmClient client(modem);
 PubSubClient mqttClient(client);
-RH_RF95 driver(CS_RF, INT_RF);
-RHReliableDatagram manager(driver, SERVER_ADDRESS);
+// RH_RF95 driver(CS_RF, INT_RF);
+// RHReliableDatagram manager(driver, SERVER_ADDRESS);
 SPIFlash flash(CS_M);
 program prog[TOTAL_PROG];
 SoftwareSerial softSerial(PG_RXD, PG_TXD);
@@ -131,7 +130,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   /*
-  char first_mem[] = "VYR_OASIS_A1";
+  char first_mem[] = "VYR_OASIS_A3";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
@@ -139,10 +138,10 @@ void setup()
   */
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
-  manager.init();
-  manager.setRetries(8);
-  manager.setTimeout(250);
-  driver.setTxPower(20, false);
+  //manager.init();
+  //manager.setRetries(8);
+  //manager.setTimeout(250);
+  //driver.setTxPower(20, false);
   SWire.begin();
   rtc.begin();
   rtc.set24Hour();
@@ -151,8 +150,8 @@ void setup()
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
   // rtc.setToCompilerTime();
-  Serial.println(rtc.stringTime());
-  Serial.println(rtc.stringDate());
+  DPRINTLN(rtc.stringTime());
+  DPRINTLN(rtc.stringDate());
   jam.ledBlink(LED_SETUP, 1000);
   //Set PG in time:
   change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
@@ -163,7 +162,7 @@ void setup()
 
   //At re-starting the pg is going to read all the info and send it to the web
   // getAllFromPG(); // Have no idea why i can't do both at the same time
-  //  json_connect_app(); //for sendding to the web that everithing is ok
+  // json_connect_app(); //for sendding to the web that everithing is ok
   // char assigned[] = {21, 34, 54, 67};
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
@@ -181,27 +180,21 @@ void loop()
 
   if (!mqttClient.connected())
   {
-    Serial.println("Mqtt connection fail");
+    DPRINTLN("Mqtt connection fail");
     connectMqtt();
     delay(5);
   }
   // Every 20 seconds I publish that I am ALIVE
-  if (millis() - millix >= 60000) // Printing that I am not dead
+  if (millis() - millix >= 30000) // Printing that I am not dead
   {
-    uint16_t b, c;
+    uint16_t b;
     analogReference(INTERNAL);
     for (int i = 0; i < 3; i++)
     {
       b = analogRead(PA0);
       delay(1);
     }
-    analogReference(DEFAULT);
-    for (int i = 0; i < 3; i++)
-    {
-      c = analogRead(PA0);
-      delay(1);
-    }
-    float bat = b * 0.0190 - 2.0 - 5.9;
+    float bat = b * 0.0190 - 2.0 - 4.9;
     char json[40];
     DynamicJsonBuffer jsonBuffer(32);
     JsonObject &root = jsonBuffer.createObject();
@@ -222,7 +215,7 @@ void loop()
     else
     {
       pressed_times = false;
-      Serial.println("BUTTON PRESSED");
+      DPRINTLN("BUTTON PRESSED");
       delay(500);
       getAllFromPG();
       for (int i = 0; i < 6; i++)
@@ -242,11 +235,11 @@ void loop()
 void connectSIM()
 {
   delay(500);
-  Serial.println("Oasis-Com starts");
+  DPRINTLN("Oasis-Com starts");
   pinMode(SIM_PWR, OUTPUT);
   digitalWrite(SIM_PWR, LOW);
   delay(1200);
-  Serial.println("Initializing modem...");
+  DPRINTLN("Initializing modem...");
   digitalWrite(SIM_PWR, HIGH);
   delay(1200);
   Serial1.begin(57600);
@@ -265,36 +258,36 @@ void connectSIM()
     modemInfo = modem.getModemInfo();
   }
 
-  Serial.print("Modem: ");
-  Serial.println(modemInfo);
+  DPRINT("Modem: ");
+  DPRINTLN(modemInfo);
   Serial1.print("AT+IPR=115200");
   modem.init();
   Serial1.begin(115200);
   delay(2000);
   Serial1.print("AT+IPR=115200");
   modem.simUnlock("8724");
-  //Serial.print("AT+CSCLK=2");
+  //DPRINT("AT+CSCLK=2");
 
-  Serial.print("Waiting for network...");
+  DPRINT("Waiting for network...");
   if (!modem.waitForNetwork())
   {
-    Serial.println(" fail");
+    DPRINTLN(" fail");
     while (true)
       ;
   }
-  Serial.println(" succeed");
+  DPRINTLN(" succeed");
 
-  Serial.print("Connecting to ");
-  Serial.print(apn);
+  DPRINT("Connecting to ");
+  DPRINT(apn);
   if (!modem.gprsConnect(apn, user_apn, pass_apn))
   {
-    Serial.println(" fail");
+    DPRINTLN(" fail");
     while (true)
       ;
   }
-  Serial.println(" succeed");
+  DPRINTLN(" succeed");
   int signalq = modem.getSignalQuality();
-  Serial.println("Signal quality: " + String(signalq));
+  DPRINTLN("Signal quality: " + String(signalq));
 }
 void connectMqtt()
 {
@@ -313,11 +306,11 @@ void connectMqtt()
     }
     else
     {
-      Serial.println("Trying to connect to MQTT...");
+      DPRINTLN("Trying to connect to MQTT...");
       delay(1000);
     }
   }
-  Serial.println("Successfully connected to MQTT");
+  DPRINTLN("Successfully connected to MQTT");
   //I suscribe to all the topics
 }
 void mqttCallback(char *topic, byte *payload, unsigned int length)
@@ -385,13 +378,13 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
     else if (sTopic.indexOf("manprog") != -1) //done
     {
+      send_web("/manprog", sizeof("/manprog"), identifier); // I send ack to the app
       //I obtein the values of the parser info:
       uint8_t activate = parsed["action"];
-      // Serial.println(activate);
+      // DPRINTLN(activate);
       String manual_program;
       manual_program = parsed["prog"].as<String>();
       // I first send it to
-      send_web("/manprog", sizeof("/manprog"), identifier); // I send ack to the app
       delay(500);
       action_prog_pg(activate, manual_program.charAt(0)); //I send the command tom PG
       char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
@@ -404,9 +397,9 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
     else if (sTopic.indexOf("oasis") != -1) //done
     {
-      Serial.println("Publish in /oasis/app");
+      DPRINTLN("Publish in /oasis/app");
       JsonArray &oasis = parsed["oasis"];
-      Serial.println("The value of the assignations are:");
+      DPRINTLN("The value of the assignations are:");
       uint8_t assigned_id[4];
       uint8_t ide[15];
       for (uint8_t oasis_num = 0; oasis_num < oasis.size(); oasis_num++)
@@ -533,7 +526,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             softSerial.write(cmd_write_data, sizeof(cmd_write_data));
             //for (int i = 0; i < sizeof(cmd_write_data); i++)
             //  Serial.write(cmd_write_data[i]);
-            Serial.println(" ");
+            DPRINTLN(" ");
             delay(800);
           }
           start_to_clear--;
@@ -589,7 +582,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             for (i = 0; i < sizeof(cmd_write_data); i++)
               Serial.write(cmd_write_data[i]);
             delay(1000);
-            Serial.println(" ");
+            DPRINTLN(" ");
             clear_num++;
           }
           val = time_to_pg_format(time_valves[number_valves][0], time_valves[number_valves][1]);
@@ -597,7 +590,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           if (mem_time.length() == 1)
             mem_time = '0' + mem_time;
           mem_time.toUpperCase();
-          Serial.println(mem_time);
+          DPRINTLN(mem_time);
           String mem_starts = String(mem_pos + number_valves, HEX);
           mem_starts.toUpperCase();
           cmd_write_data[13] = mem_starts.charAt(0);
@@ -610,7 +603,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           for (i = 0; i < sizeof(cmd_write_data); i++)
             Serial.write(cmd_write_data[i]);
           delay(1000);
-          Serial.println(" ");
+          DPRINTLN(" ");
           clear_num++;
         }
       }
@@ -622,6 +615,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
     else if (sTopic.indexOf("query") != -1) //done
     {
+      send_web("/query", sizeof("/query"), identifier);
       json_query(String(identifier).c_str(), "AUTO");
     }
     else if (sTopic.indexOf("general") != -1) //receive the delay between valves and mv and valve
@@ -644,7 +638,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
       for (i = 0; i < sizeof(cmd_write_data); i++)
         Serial.write(cmd_write_data[i]);
-      Serial.println("");
+      DPRINTLN("");
       delay(800);
       cmd_write_data[15] = '0';
       String ret_mv = String(pump_delay, HEX);
@@ -717,10 +711,10 @@ void rtc_node(int hour, int minute, int second, int day, int month, uint16_t &or
 }
 void print_flash()
 {
-  Serial.print("The App name is: ");
+  DPRINT("The App name is: ");
   for (int a = 0; a < UUID_LEN; a++)
     Serial.write(sys.devUuid[a]);
-  Serial.println(" ");
+  DPRINTLN(" ");
 }
 uint8_t batLevel()
 {
@@ -943,7 +937,7 @@ void write_percentage_pg(uint16_t position, uint16_t percentage)
   {
     Serial.write(cmd_write_data[i]);
   }
-  Serial.println(" ");
+  DPRINTLN(" ");
   irrig_pos = String(position + 1, HEX);
   if (irrig_pos.length() != 2)
     irrig_pos = '0' + irrig_pos;
@@ -958,7 +952,7 @@ void write_percentage_pg(uint16_t position, uint16_t percentage)
   for (i = 0; i < sizeof(cmd_write_data); i++)
     Serial.write(cmd_write_data[i]);
   delay(800);
-  Serial.println(" ");
+  DPRINTLN(" ");
 }
 void getAllFromPG() //this function get all data from PG
 {
@@ -1015,11 +1009,10 @@ void getAllFromPG() //this function get all data from PG
       aux = pg.substring(index, pg.indexOf(" ", index));
       if (aux != "FF")
       {
-        sys.childValves[m][n] = strtol(aux.c_str(), NULL, HEX) + 1;
+        // sys.childValves[m][n] = strtol(aux.c_str(), NULL, HEX) + 1;
         valveDef[m] = 1;
       }
-      else
-        sys.childValves[m][n] = 0;
+
       index += aux.length() + 1;
       if (n == 3)
       {
@@ -1181,11 +1174,11 @@ void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory i
   {
     data[CMD_INDEX + 1] = pos; //set command parameter
     data[CMD_INDEX] = MEMMORY; //set comand id
-    for (j = 0; j < sys.nChild; j++)
+    for (j = 0; j < 2; j++)
     { //for each child
       DPRINT("Send change to OASIS: ");
       DPRINTLN(j + 1);
-      jam.fillWithString(data, String(sys.oasisUuid[j]), PAYLOAD_INDEX); //add child uuid to data
+      // jam.fillWithString(data, String(sys.oasisUuid[j]), PAYLOAD_INDEX); //add child uuid to data
       //comError[j] = !sendCommand(data, i, sys.oasisRfId[j]);             //send command to child
     }
     // checkComError(i);
@@ -1301,7 +1294,7 @@ void json_connect_app()
 void json_query(const char id[], char status[])
 {
   uint16_t b;
-  DynamicJsonBuffer jsonBuffer(500);
+  DynamicJsonBuffer jsonBuffer(244);
   JsonObject &root = jsonBuffer.createObject();
   analogReference(INTERNAL);
   for (uint8_t i = 0; i < 3; i++)
@@ -1340,7 +1333,7 @@ void json_query(const char id[], char status[])
     if (program_active[prog])
       active.add(String(program_letters[prog]));
   //I generate the main json frame
-  char json[300];
+  char json[250];
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/query").c_str(), (const uint8_t *)json, strlen(json), false);
   // root.prettyPrintTo(Serial);
@@ -1528,7 +1521,7 @@ void change_oasis_assigned(uint8_t oasis_number, uint8_t *assigned)
     //for (i = 0; i < sizeof(cmd_write_data); i++)
     //  Serial.write(cmd_write_data[i]);
     delay(1000);
-    Serial.println(" ");
+    DPRINTLN(" ");
   }
 }
 int freeRam()
