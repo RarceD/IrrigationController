@@ -10,7 +10,7 @@
 #define CLIENT_ADDRESS 3
 #define SERVER_ADDRESS 2
 
-// #define DEBUG_ON
+#define DEBUG_ON
 #ifdef DEBUG_ON
 #define DPRINT(...) Serial.print(__VA_ARGS__)
 #define DPRINTLN(...) Serial.println(__VA_ARGS__)
@@ -130,7 +130,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   /*
-  char first_mem[] = "VYR_OASIS_A3";
+  char first_mem[] = "VYR_OASIS_A4";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
@@ -615,7 +615,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
     else if (sTopic.indexOf("query") != -1) //done
     {
-      send_web("/query", sizeof("/query"), identifier);
+      // send_web("/query", sizeof("/query"), identifier);
       json_query(String(identifier).c_str(), "AUTO");
     }
     else if (sTopic.indexOf("general") != -1) //receive the delay between valves and mv and valve
@@ -623,35 +623,57 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       send_web("/general", sizeof("/general"), identifier);
       uint8_t pump_delay = parsed["pump_delay"].as<uint8_t>();
       uint8_t valve_delay = parsed["valve_delay"].as<uint8_t>();
-      if (pump_delay < 0)
-        pump_delay = 0xFF + pump_delay + 1;
-      cmd_write_data[13] = '0';
-      cmd_write_data[14] = '5';
-      cmd_write_data[15] = '1';
-      String ret_valve = String(valve_delay, HEX);
-      if (ret_valve.length() == 1)
-        ret_valve = '0' + ret_valve;
-      ret_valve.toUpperCase();
-      cmd_write_data[17] = ret_valve.charAt(0);
-      cmd_write_data[18] = ret_valve.charAt(1);
-      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-      softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-      for (i = 0; i < sizeof(cmd_write_data); i++)
-        Serial.write(cmd_write_data[i]);
-      DPRINTLN("");
-      delay(800);
-      cmd_write_data[15] = '0';
-      String ret_mv = String(pump_delay, HEX);
-      if (ret_mv.length() == 1)
-        ret_mv = '0' + ret_mv;
-      ret_mv.toUpperCase();
-      cmd_write_data[17] = ret_mv.charAt(0);
-      cmd_write_data[18] = ret_mv.charAt(1);
-      calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
-      softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
-      for (i = 0; i < sizeof(cmd_write_data); i++)
-        Serial.write(cmd_write_data[i]);
-
+      String web_time = parsed["date"].as<String>();
+      if (parsed["pump_delay"].success())
+      {
+        if (pump_delay < 0)
+          pump_delay = 0xFF + pump_delay + 1;
+        cmd_write_data[13] = '0';
+        cmd_write_data[14] = '5';
+        cmd_write_data[15] = '1';
+        String ret_valve = String(valve_delay, HEX);
+        if (ret_valve.length() == 1)
+          ret_valve = '0' + ret_valve;
+        ret_valve.toUpperCase();
+        cmd_write_data[17] = ret_valve.charAt(0);
+        cmd_write_data[18] = ret_valve.charAt(1);
+        calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+        softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+        delay(800);
+      }
+      if (parsed["valve_delay"].success())
+      {
+        cmd_write_data[13] = '0';
+        cmd_write_data[14] = '5';
+        cmd_write_data[15] = '0';
+        String ret_mv = String(pump_delay, HEX);
+        if (ret_mv.length() == 1)
+          ret_mv = '0' + ret_mv;
+        ret_mv.toUpperCase();
+        cmd_write_data[17] = ret_mv.charAt(0);
+        cmd_write_data[18] = ret_mv.charAt(1);
+        calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+        softSerial.write(cmd_write_data, sizeof(cmd_write_data)); //real send to PG
+        for (i = 0; i < sizeof(cmd_write_data); i++)
+          Serial.write(cmd_write_data[i]);
+      }
+      if (parsed["date"].success())
+      {
+        uint8_t time_hours = (web_time.charAt(11) - '0') * 10 + (web_time.charAt(12) - '0');
+        uint8_t time_min = (web_time.charAt(14) - '0') * 10 + (web_time.charAt(15) - '0');
+        uint8_t time_day = (web_time.charAt(0) - '0') * 10 + (web_time.charAt(1) - '0');
+        uint8_t time_month = (web_time.charAt(3) - '0') * 10 + (web_time.charAt(4) - '0');
+        uint8_t time_year = (web_time.charAt(8) - '0') * 10 + (web_time.charAt(9) - '0');
+        DPRINTLN("");
+        rtc.updateTime();
+        rtc.setDate(time_day);
+        rtc.setMonth(time_month);
+        rtc.setYear(time_year);
+        rtc.setMinutes(time_min);
+        rtc.setHours(time_hours);
+        DPRINTLN(rtc.stringTime());
+        DPRINTLN(rtc.stringDate());
+      }
       //TODO: Write in PG MEMMORY
     }
     else if (sTopic.indexOf("stop") != -1) //I stop all the stuff open
@@ -690,25 +712,7 @@ void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
   intRtc = true; //set flag to indicate that rtc interrupt was triggered
 }
-void rtc_node(int hour, int minute, int second, int day, int month, uint16_t &order)
-{
-  uint8_t send_time[] = "##TIME:H:XX/M:XX/S:XX/D:XX/M:XX/";
-  send_time[7 + 2] = (hour / 10) + 0x30;
-  send_time[8 + 2] = (hour % 10) + 0x30;
-  send_time[12 + 2] = (minute / 10) + 0x30;
-  send_time[13 + 2] = (minute % 10) + 0x30;
-  send_time[17 + 2] = (second / 10) + 0x30;
-  send_time[18 + 2] = (second % 10) + 0x30;
-  send_time[22 + 2] = (day / 10) + 0x30;
-  send_time[23 + 2] = (day % 10) + 0x30;
-  send_time[27 + 2] = (month / 10) + 0x30;
-  send_time[28 + 2] = (month % 10) + 0x30;
-  for (int i = 0; i < sizeof(send_time); i++)
-    data[order++] = send_time[i];
-  //for (int i = 0; i < sizeof(send); i++)
-  //  Serial.write(send[i]);
-  //manager.sendtoWait(data, sizeof(send), CLIENT_ADDRESS);
-}
+
 void print_flash()
 {
   DPRINT("The App name is: ");

@@ -46,6 +46,15 @@ void setup()
   }
   Serial.println();
   Serial.print("Read response: ");
+  String web_time = "22/04/2020 12:32";
+  int hours = (web_time.charAt(11) - '0') * 10 + (web_time.charAt(12) - '0');
+  int minutes = (web_time.charAt(14) - '0') * 10 + (web_time.charAt(15) - '0');
+  int day = (web_time.charAt(0) - '0') * 10 + (web_time.charAt(1) - '0');
+  int month = (web_time.charAt(3) - '0') * 10 + (web_time.charAt(4) - '0');
+  int year = (web_time.charAt(8) - '0') * 10 + (web_time.charAt(9) - '0');
+  Serial.println(year);
+
+
 }
 
 /******************************************************************* main program  ************************************************************************************/
