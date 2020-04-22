@@ -7,9 +7,6 @@
 
 #include <JamAtm-Vyrsa.h>
 
-#define CLIENT_ADDRESS 3
-#define SERVER_ADDRESS 2
-
 #define DEBUG_ON
 #ifdef DEBUG_ON
 #define DPRINT(...) Serial.print(__VA_ARGS__)
@@ -159,7 +156,7 @@ void setup()
   connectSIM();
   connectMqtt();
   millix = millis();
-
+  // json_program_valves(0);
   //At re-starting the pg is going to read all the info and send it to the web
   // getAllFromPG(); // Have no idea why i can't do both at the same time
   // json_connect_app(); //for sendding to the web that everithing is ok
@@ -184,8 +181,8 @@ void loop()
     connectMqtt();
     delay(5);
   }
-  // Every 20 seconds I publish that I am ALIVE
-  if (millis() - millix >= 30000) // Printing that I am not dead
+  // Every 30 seconds I publish that I am ALIVE
+  if (millis() - millix >= 20000) // Printing that I am not dead
   {
     uint16_t b;
     analogReference(INTERNAL);
@@ -194,11 +191,11 @@ void loop()
       b = analogRead(PA0);
       delay(1);
     }
-    float bat = b * 0.0190 - 2.0 - 4.9;
+    float bat = b * 0.0190 - 2.0 - 2.9;
     char json[40];
     DynamicJsonBuffer jsonBuffer(32);
     JsonObject &root = jsonBuffer.createObject();
-    root.set("voltage", bat);
+    root.set("voltage", String(bat) + "V");
     root.set("freeRam", String(float(freeRam() / 1024.0)) + "kB");
     root.printTo(json);
     mqttClient.publish((String(sys.devUuid) + "/uptime").c_str(), (const uint8_t *)json, strlen(json), false);
@@ -225,6 +222,8 @@ void loop()
         json_week_days(i, prog[i].wateringDay);
         delay(50);
         json_program_starts(i);
+        delay(50);
+        json_program_valves(i);
         delay(50);
       }
       DPRINTLN(freeRam());
@@ -712,7 +711,6 @@ void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
   intRtc = true; //set flag to indicate that rtc interrupt was triggered
 }
-
 void print_flash()
 {
   DPRINT("The App name is: ");
@@ -1222,37 +1220,46 @@ void json_program_starts(uint8_t program)
 }
 void json_program_valves(uint8_t program)
 {
+  DynamicJsonBuffer jsonBuffer(200);
+  JsonObject &root = jsonBuffer.createObject();
   char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
   //Generate the structure of the program via json
-  DynamicJsonBuffer jsonBuffer(500);
-  JsonObject &root = jsonBuffer.createObject();
-  uint8_t index_program = program; //I generate the json only for the program request
-  root["prog"] = String(program_letters[index_program]);
-  uint16_t time_compleat, time_in_format_h, time_in_format_m;
-  bool done = false;
-  for (uint8_t index_valves = 0; index_valves < 8; index_valves++)
-    if (String(prog[index_program].irrigTime[index_valves]) != "255" && String(prog[index_program].irrigTime[index_valves]) != "247")
+  root["prog"] = String(program_letters[program]);
+  JsonArray &valves = root.createNestedArray("valves");
+  for (uint8_t index_valves = 0; index_valves < 14; index_valves++)
+  {
+    DPRINTLN(prog[program].irrigTime[index_valves]);
+    if (prog[program].irrigTime[index_valves] <= 200)
     {
-      JsonArray &valves = root.createNestedArray("valves");
       JsonObject &irrig = root.createNestedObject("");
+      DPRINTLN(prog[program].irrigTime[index_valves]);
       irrig["v"] = index_valves + 1;
-      time_compleat = pg_reag_to_web(prog[index_program].irrigTime[index_valves]);
-      time_in_format_h = time_compleat / 60;
-      time_in_format_m = time_compleat % 60;
-      String time_h_json, time_m_json;
-      if (time_in_format_h < 10)
-        time_h_json = '0' + String(time_in_format_h);
+      int time_compleat = pg_reag_to_web((uint16_t)prog[program].irrigTime[index_valves]);
+      uint16_t time_in_format_h;
+      uint16_t time_in_format_m;
+      if (time_compleat >= 60)
+      {
+        time_in_format_h = time_compleat / 60;
+        time_in_format_m = time_compleat % 60;
+        String h = String(time_in_format_h);
+        String m = String(time_in_format_m);
+        if (h.length() == 1)
+          h = '0' + h;
+        if (m.length() == 1)
+          m = '0' + m;
+        irrig["time"] = h + ":" + m;
+      }
       else
-        time_h_json = String(time_in_format_h);
-      if (time_in_format_m < 10)
-        time_m_json = '0' + String(time_in_format_m);
-      else
-        time_m_json = String(time_in_format_m);
-
-      irrig["time"] = time_h_json + ":" + time_m_json;
+      {
+        String x = String(time_compleat);
+        if (x.length() == 1)
+          x = '0' + x;
+        irrig["time"] = "00:" + x;
+      }
       valves.add(irrig);
     }
-  char json[500];
+  }
+  char json[300];
   root.printTo(json);
   mqttClient.publish((String(sys.devUuid) + "/program").c_str(), (const uint8_t *)json, strlen(json), false);
 }
@@ -1663,6 +1670,8 @@ void listening_pg()
         json_week_days(i, prog[i].wateringDay);
         delay(50);
         json_program_starts(i);
+        delay(50);
+        json_program_valves(i);
         delay(50);
       }
       digitalWrite(LED_SETUP, LOW);
