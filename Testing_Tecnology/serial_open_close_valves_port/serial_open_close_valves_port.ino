@@ -14,7 +14,7 @@ static uint8_t cmd_set_time[] = {0x02, 0xfe, 'S', 'E', 'T', ' ', 'T', 'I', 'M', 
 
 // static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
 
-static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', '5', '0', 0x23, 0x03, 0, 0};
+static uint8_t cmd_read_line[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'L', 'I', 'N', 'E', 0x23, '0', 'C', '0', 0x23, 0x03, 0, 0};
 
 static uint8_t cmd_write_data[] = {0x02, 0xfe, 'W', 'R', 'I', 'T', 'E', ' ', 'D', 'A', 'T', 'A', 0x23, ' ', ' ', ' ', 0x23, ' ', ' ', 0x23, 0x03, 0, 0};
 static uint8_t cmd_read_time[] = {0x02, 0xfe, 'R', 'E', 'A', 'D', ' ', 'T', 'I', 'M', 'E', 0x23, 0x03, 0, 0};
@@ -53,8 +53,6 @@ void setup()
   int month = (web_time.charAt(3) - '0') * 10 + (web_time.charAt(4) - '0');
   int year = (web_time.charAt(8) - '0') * 10 + (web_time.charAt(9) - '0');
   Serial.println(year);
-
-
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -241,7 +239,6 @@ void loop()
         Serial.write(cmd_write_data[i]);
     }             //prexx 'k'ç
     if (a == 108) //l
-
     {
       Serial.println("");
 
@@ -276,10 +273,63 @@ void loop()
       for (i = 0; i < sizeof(cmd_write_data); i++)
         Serial.write(cmd_write_data[i]);
     }
+    if (a == 109) // m
+    {
+
+      String time_from = "23/04/2020";
+      String time_to = "12/10/2021";
+      uint8_t dir = 0xc0;
+      Serial.println("");
+
+      write_start_stop_pg(true, time_from, dir);
+      write_start_stop_pg(false, time_to, dir);
+    }
   }
 
   while (softSerial.available())
     Serial.print((char)softSerial.read());
+}
+void write_start_stop_pg(bool from, String time, uint8_t dir)
+{
+  //Obtein the time in the correct format:
+  uint8_t time_day = (time.charAt(0) - '0') * 10 + (time.charAt(1) - '0');
+  uint8_t time_month = (time.charAt(3) - '0') * 10 + (time.charAt(4) - '0');
+
+  String date_day = String(time_day, HEX);
+  if (date_day.length() != 2)
+    date_day = '0' + date_day;
+  date_day.toUpperCase();
+
+  String date_month = String(time_month, HEX);
+  if (date_month.length() != 2)
+    date_month = '0' + date_month;
+  date_month.toUpperCase();
+
+  uint8_t add_from = 0;
+  if (!from)
+    add_from = 2;
+  //I set the position to write:
+  String mem_pos = String(dir + add_from, HEX);
+  mem_pos.toUpperCase();
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = mem_pos.charAt(0);
+  cmd_write_data[15] = mem_pos.charAt(1);
+  cmd_write_data[17] = date_day.charAt(0);
+  cmd_write_data[18] = date_day.charAt(1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+  delay(800);
+  //And then the month
+  mem_pos = String(dir + add_from + 1, HEX);
+  mem_pos.toUpperCase();
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = mem_pos.charAt(0);
+  cmd_write_data[15] = mem_pos.charAt(1);
+  cmd_write_data[17] = date_month.charAt(0);
+  cmd_write_data[18] = date_month.charAt(1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+  delay(800);
 }
 
 int calcrc(char ptr[], int length)

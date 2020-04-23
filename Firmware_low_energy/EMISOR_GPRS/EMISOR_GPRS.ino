@@ -72,8 +72,6 @@ typedef struct //If I recevived a stop command in the web I have to know what to
   bool programs[6];
 } active_to_stop;
 
-bool program_active[6];
-
 TinyGsm modem(Serial1);
 TinyGsmClient client(modem);
 PubSubClient mqttClient(client);
@@ -126,13 +124,13 @@ void setup()
   softSerial.begin(9600);
   flash.powerUp();
   flash.begin();
-  /*
-  char first_mem[] = "VYR_OASIS_A4";
+
+  char first_mem[] = "VYR_OASIS_A5";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
   flash.writeAnything(SYS_VAR_ADDR, sys);
-  */
+
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   //manager.init();
@@ -159,7 +157,7 @@ void setup()
   // json_program_valves(0);
   //At re-starting the pg is going to read all the info and send it to the web
   // getAllFromPG(); // Have no idea why i can't do both at the same time
-  // json_connect_app(); //for sendding to the web that everithing is ok
+  //  json_connect_app(); //for sendding to the web that everithing is ok
   // char assigned[] = {21, 34, 54, 67};
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
@@ -174,7 +172,6 @@ void loop()
 {
   mqttClient.loop();
   listening_pg();
-
   if (!mqttClient.connected())
   {
     DPRINTLN("Mqtt connection fail");
@@ -204,30 +201,21 @@ void loop()
   }
   if (!digitalRead(PCINT_PIN)) //If pressed the button syn with the web
   {
-    if (!pressed_times)
+    DPRINTLN("BUTTON PRESSED");
+    delay(500);
+    getAllFromPG();
+    for (int i = 0; i < 6; i++)
     {
-      //getAllFromPG(); // Have no idea why i can't do both at the same time
-      pressed_times = true;
+      json_clear_starts(i);
+      delay(50);
+      json_week_days(i, prog[i].wateringDay);
+      delay(50);
+      json_program_starts(i);
+      delay(50);
+      json_program_valves(i);
+      delay(50);
     }
-    else
-    {
-      pressed_times = false;
-      DPRINTLN("BUTTON PRESSED");
-      delay(500);
-      getAllFromPG();
-      for (int i = 0; i < 6; i++)
-      {
-        json_clear_starts(i);
-        delay(50);
-        json_week_days(i, prog[i].wateringDay);
-        delay(50);
-        json_program_starts(i);
-        delay(50);
-        json_program_valves(i);
-        delay(50);
-      }
-      DPRINTLN(freeRam());
-    }
+    DPRINTLN(freeRam());
   }
 }
 /*******************************************************************   functions     ************************************************************************************/
@@ -429,6 +417,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       uint16_t mem_pos = 1024;            // This is the position of the starts in PG EEPROM memmory
       uint16_t position_percentage = 144; // This is the position of the irrig % in PG EEPROM memmory
       uint8_t position_week = 0xB0;       //This is for the week day starts
+      uint8_t position_from_to = 0xC0; //For changing the starting and stop irrig day, not year
+
       switch (manual_program.charAt(0))
       {
       case 'B':
@@ -436,29 +426,34 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         mem_pos = 1152;
         position_percentage = 146;
         position_week = 0xB1;
+        position_from_to = 0xC4;
         break;
       case 'C':
         position_starts = 440;
         mem_pos = 1280;
         position_percentage = 148;
         position_week = 0xB2;
+        position_from_to = 0xC8;
         break;
       case 'D':
         position_starts = 452;
         mem_pos = 1408;
         position_percentage = 150;
         position_week = 0xB3;
+        position_from_to = 0xCC;
         break;
       case 'E':
         position_starts = 464;
         mem_pos = 1536;
         position_percentage = 152;
         position_week = 0xB4;
+        position_from_to = 0xD0;
       case 'F':
         position_starts = 476;
         mem_pos = 1664;
         position_percentage = 154;
         position_week = 0xB5;
+        position_from_to = 0xD4;
       default:
         break;
       }
@@ -610,6 +605,14 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       uint16_t irrig_percent = parsed["water"].as<uint16_t>();
       if (parsed["water"].success())
         write_percentage_pg(position_percentage, irrig_percent);
+
+      if (parsed["from"].success())
+      {
+        String time_from = parsed["from"].as<String>();
+        write_start_stop_pg(true, time_from, position_from_to);
+        String time_to = parsed["to"].as<String>();
+        write_start_stop_pg(false, time_to, position_from_to);
+      }
       LOGLN(manual_program);
     }
     else if (sTopic.indexOf("query") != -1) //done
@@ -695,6 +698,49 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
   }
 }
+void write_start_stop_pg(bool from, String time, uint8_t dir)
+{
+  //Obtein the time in the correct format:
+  uint8_t time_day = (time.charAt(0) - '0') * 10 + (time.charAt(1) - '0');
+  uint8_t time_month = (time.charAt(3) - '0') * 10 + (time.charAt(4) - '0');
+
+  String date_day = String(time_day, HEX);
+  if (date_day.length() != 2)
+    date_day = '0' + date_day;
+  date_day.toUpperCase();
+
+  String date_month = String(time_month, HEX);
+  if (date_month.length() != 2)
+    date_month = '0' + date_month;
+  date_month.toUpperCase();
+
+  uint8_t add_from = 0;
+  if (!from)
+    add_from = 2;
+  //I set the position to write:
+  String mem_pos = String(dir + add_from, HEX);
+  mem_pos.toUpperCase();
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = mem_pos.charAt(0);
+  cmd_write_data[15] = mem_pos.charAt(1);
+  cmd_write_data[17] = date_day.charAt(0);
+  cmd_write_data[18] = date_day.charAt(1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+  delay(800);
+  //And then the month
+  mem_pos = String(dir + add_from + 1, HEX);
+  mem_pos.toUpperCase();
+  cmd_write_data[13] = '0';
+  cmd_write_data[14] = mem_pos.charAt(0);
+  cmd_write_data[15] = mem_pos.charAt(1);
+  cmd_write_data[17] = date_month.charAt(0);
+  cmd_write_data[18] = date_month.charAt(1);
+  calcrc((char *)cmd_write_data, sizeof(cmd_write_data) - 2);
+  softSerial.write(cmd_write_data, sizeof(cmd_write_data));
+  delay(800);
+}
+
 void send_web(char *topic, unsigned int length, int id)
 {
   String ack_topic = String(topic);
@@ -850,9 +896,9 @@ void action_prog_pg(uint8_t state, char program)
       DPRINTLN("El valor del programa es: ");
       Serial.write(program);
       if (state == 1)
-        program_active[index_program] = true;
+        active.programs[index_program] = true;
       else
-        program_active[index_program] = false;
+        active.programs[index_program] = false;
     }
 
   if (state == 1)
@@ -1338,11 +1384,11 @@ void json_query(const char id[], char status[])
   //I send the time to the web:
   root["date"] = String(rtc.stringDate()) + " " + String(rtc.stringTime());
   //I check if there is any prpogram active and I send to the web:
-  JsonArray &active = root.createNestedArray("prog_active");
+  JsonArray &active_json = root.createNestedArray("prog_active");
   char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
   for (uint8_t prog = 0; prog < 6; prog++)
-    if (program_active[prog])
-      active.add(String(program_letters[prog]));
+    if (active.programs[prog])
+      active_json.add(String(program_letters[prog]));
   //I generate the main json frame
   char json[250];
   root.printTo(json);
