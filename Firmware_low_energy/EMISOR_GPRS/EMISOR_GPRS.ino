@@ -7,7 +7,7 @@
 
 #include <JamAtm-Vyrsa.h>
 
-#define DEBUG_ON
+// #define DEBUG_ON
 #ifdef DEBUG_ON
 #define DPRINT(...) Serial.print(__VA_ARGS__)
 #define DPRINTLN(...) Serial.println(__VA_ARGS__)
@@ -124,13 +124,13 @@ void setup()
   softSerial.begin(9600);
   flash.powerUp();
   flash.begin();
-
-  char first_mem[] = "VYR_OASIS_A5";
+  /*
+  char first_mem[] = "VYR_OASIS_A1";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
   flash.writeAnything(SYS_VAR_ADDR, sys);
-
+  */
   flash.readByteArray(SYS_VAR_ADDR, (uint8_t *)&sys, sizeof(sys));
   flash.readByteArray(PROG_VAR_ADDR, (uint8_t *)&prog, sizeof(prog));
   //manager.init();
@@ -673,8 +673,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         rtc.setYear(time_year);
         rtc.setMinutes(time_min);
         rtc.setHours(time_hours);
+        change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
         DPRINTLN(rtc.stringTime());
         DPRINTLN(rtc.stringDate());
+
       }
       //TODO: Write in PG MEMMORY
     }
