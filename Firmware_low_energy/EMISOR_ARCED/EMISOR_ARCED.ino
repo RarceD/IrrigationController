@@ -65,13 +65,7 @@ typedef struct
   uint8_t offset;
   uint32_t counter;
 } ack_oasis_rf;
-typedef enum
-{
-  MODE_WAIT,
-  MODE_SEND_OASIS,
-  MODE_LISTEN_OASIS,
-  MODE_CHECK_PROGRAMS
-} MACHINE_STATES;
+
 sysVar sys;
 sys_rf_info sys_rf;
 manual man; //manual timers
@@ -112,6 +106,14 @@ bool pg_interact_while_radio;
 bool auto_program_flag;
 uint8_t rf_msg_tries;
 uint8_t machine_states;
+
+typedef enum
+{
+  MODE_LISTEN_OASIS,
+  MODE_SEND_OASIS,
+  MODE_LISTEN_PG
+} STATE_MACHINE;
+uint8_t state_machine; //= MODE_LISTEN_PG;
 void setup()
 {
 #ifdef DEBUG_ON
@@ -194,24 +196,85 @@ void setup()
     radio_waitting_msg.request_FULL_MESSAGE[msg] = false;
   }
   print_flash_mem();
+  state_machine = MODE_LISTEN_PG;
 }
 void loop()
 {
-  //I am continously listen to the nodes actions, if something happend then I save
-  if (oasis_listen)
+  /*
+    The system wakes up at X:55 and start sendding to Oasis
+    Oasis wakes at X:00 and listen for 2 second, if in this time receive something sleep
+                                                 if it doesn't, they sleep at X:02
+    Oasis wakes up at X:30 and send ACK to master
+  */
+  switch (state_machine)
+  {
+  case MODE_LISTEN_OASIS:
   {
     if (manager.available()) // Detect radio activity and find id of the nodes
     {
       uint8_t len = sizeof(buf);
       manager.recvfromAck(buf + ack.offset, &len); //Save all the info received in buff for later analize
       ack.offset += len;                           //increse the pointer in the buffer for not overlapping the msg
-      if (!ack.clear)
-        ack.counter = millis();
-      ack.clear = true;
-      // Serial.println((char *)buf);
+      if (millis() - ack.counter >= 5000)
+      {
+        DPRINTLN("I leave the listen zone");
+        for (int i = 0; i < sizeof(buf); i++)
+          Serial.write(buf[i]);
+        state_machine = MODE_LISTEN_PG;
+      }
     }
+    break;
   }
+  case MODE_SEND_OASIS:
+  {
+    // Always the first message have to be sync
+    uint32_t start = millis();
+    //I clear the flags of interaction and program auto running
+    auto_program_flag = false;
+    pg_interact_while_radio = false;
+    // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
+    rf_msg_tries++;
+    uint8_t data[150];
+    memset(data, '0', sizeof(buf));
+    uint8_t preamble[] = "00XXA1##TIME:H:XX/M:XX/S:XX";
+    rtc.updateTime();
+    uint8_t offset = 8;
+    preamble[offset + 7] = (rtc.getHours() / 10) + '0';
+    preamble[offset + 8] = (rtc.getHours() % 10) + '0';
+    preamble[offset + 12] = (rtc.getMinutes() / 10) + '0';
+    preamble[offset + 13] = (rtc.getMinutes() % 10) + '0';
+    preamble[offset + 17] = (rtc.getSeconds() / 10) + '0';
+    preamble[offset + 18] = (rtc.getSeconds() % 10) + '0';
+    //TODO: Integrate the UUID in the msg
+    memcpy(data, preamble, sizeof(preamble));
+    uint8_t times = 8; //6 times better
+    while (times-- > 0)
+    {
+      driver.send((const uint8_t *)data, sizeof(data));
+      driver.waitPacketSent();
+    }
+    for (int i = 0; i < 100; i++)
+      Serial.write(data[i]);
+    Serial.println(" ");
+    state_machine = MODE_LISTEN_PG;
+    break;
+  }
+  default:
+    break;
+  }
+  if (state_machine == MODE_LISTEN_OASIS)
+  {
+  }
+  else if (state_machine == MODE_SEND_OASIS)
+  {
+  }
+  else if (state_machine == MODE_LISTEN_PG)
+  {
+    listening_pg();
+  }
+
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
+  /*
   if ((ack.clear && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
     for (int i = 0; i < sizeof(buf); i++)
@@ -307,13 +370,6 @@ void loop()
   When the Serial Port of the PG is set I read what happend there ant act. If there is an inmidiate action I just write an struct 
   and when is the time to send I do it
   */
-  listening_pg();
-  /*
-    The system wakes up at X:55 and start sendding to Oasis
-    Oasis wakes at X:00 and listen for 2 second, if in this time receive something sleep
-                                                 if it doesn't, they sleep at X:02
-    Oasis wakes up at X:30 and send ACK to master
-  */
   if (!digitalRead(PCINT_PIN)) //If pressed the button I save all PG info in flash
   {
     // digitalWrite(LED_SETUP, HIGH);
@@ -334,53 +390,19 @@ void loop()
       //I listen the ack of the nodes
       rtc.setAlarmMode(6);
       rtc.setAlarm(28, 0, 0, 0, 0);
-      oasis_listen = false;
-      oasis_send = true;
-      DPRINTLN("Send oasis info");
+      state_machine = MODE_SEND_OASIS;
     }
     else
     {
       //I send nodes
       rtc.setAlarmMode(6);
       rtc.setAlarm(59, 0, 0, 0, 0);
-      oasis_send = false;
-      oasis_listen = true;
-      DPRINTLN("Listen oasis ack");
+      state_machine = MODE_LISTEN_OASIS;
     }
-    ack.counter = 0;
   }
   if (oasis_send) // Its the time of sendding the info
   {
-    // Always the first message have to be sync
-    uint32_t start = millis();
-    //I clear the flags of interaction and program auto running
-    auto_program_flag = false;
-    pg_interact_while_radio = false;
-    // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
-    rf_msg_tries++;
-    uint8_t data[150];
-    uint8_t preamble[] = "00XXA1##TIME:H:XX/M:XX/S:XX##MANVAL#012#01:03##ASIGNED#021#045:099:004:035##STOP#ALL________";
-    rtc.updateTime();
-    Serial.println(rtc.stringTime());
-    uint8_t offset = 8;
-    preamble[offset + 7] = (rtc.getHours() / 10) + '0';
-    preamble[offset + 8] = (rtc.getHours() % 10) + '0';
-    preamble[offset + 12] = (rtc.getMinutes() / 10) + '0';
-    preamble[offset + 13] = (rtc.getMinutes() % 10) + '0';
-    preamble[offset + 17] = (rtc.getSeconds() / 10) + '0';
-    preamble[offset + 18] = (rtc.getSeconds() % 10) + '0';
-    //TODO: Integrate the UUID in the msg
-    memcpy(data, preamble, sizeof(preamble));
-    uint8_t times = 6; //6 times better
-    while (times-- > 0)
-    {
-      driver.send((const uint8_t *)data, sizeof(data));
-      driver.waitPacketSent();
-    }
-    for (int i = 0; i < 100; i++)
-      Serial.write(data[i]);
-    Serial.println(" ");
-    DPRINTLN(millis());
+
     /*
     uint8_t counter_syn = 0;
     while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
@@ -426,6 +448,7 @@ void loop()
 
   The ejecution of the programs in order. THIS PART IS A SAME AND I DO NOT CONSIDER RESPONSIBLE FOR THIS PIECE OF SHIT
   */
+  /*
   if (start_programA)
   {
     if (prog[0].irrigTime[index_prog_A] != 255 && prog[0].irrigTime[index_prog_A] != 0)
@@ -697,6 +720,7 @@ void loop()
   timerE.run();
   timerF.run();
   timerCheck.run();
+  */
 }
 void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
 {
