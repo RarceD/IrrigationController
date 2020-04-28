@@ -125,7 +125,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   /*
-  char first_mem[] = "VYR_OASIS_A1";
+  char first_mem[] = "VYR_OASIS_A2";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
@@ -1384,6 +1384,7 @@ void json_query(const char id[], char status[])
   oasis["bat"] = 78;
   root["connection"] = map(modem.getSignalQuality(), 15, 30, 5, 100);
   //I send the time to the web:
+  rtc.updateTime();
   root["date"] = String(rtc.stringDate()) + " " + String(rtc.stringTime());
   //I check if there is any prpogram active and I send to the web:
   JsonArray &active_json = root.createNestedArray("prog_active");
