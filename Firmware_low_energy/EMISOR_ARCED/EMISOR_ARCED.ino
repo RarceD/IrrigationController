@@ -141,7 +141,7 @@ void setup()
   //This have to be change manually 
   sys_rf.UUID_RF[0] = 'A';
   sys_rf.UUID_RF[1] = '1';
-  sys_rf.NUMBER_NODES = 4;
+  sys_rf.NUMBER_NODES = 3;
   flash.eraseSector(FLASH_SYS_DIR);
   flash.writeAnything(FLASH_SYS_DIR, sys_rf);
   */
@@ -201,28 +201,25 @@ void setup()
 void loop()
 {
   /*
-    The system wakes up at X:55 and start sendding to Oasis
+    The system wakes up at X:58 and start sendding to Oasis
     Oasis wakes at X:00 and listen for 2 second, if in this time receive something sleep
                                                  if it doesn't, they sleep at X:02
-    Oasis wakes up at X:30 and send ACK to master
   */
   switch (state_machine)
   {
   case MODE_LISTEN_OASIS:
   {
-    if (manager.available()) // Detect radio activity and find id of the nodes
+    if (driver.available()) // Detect radio activity and set a timer for waking up at 00
     {
+      DPRINTLN("Received");
+      uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
-      manager.recvfromAck(buf + ack.offset, &len); //Save all the info received in buff for later analize
-      ack.offset += len;                           //increse the pointer in the buffer for not overlapping the msg
-      if (millis() - ack.counter >= 5000)
-      {
-        DPRINTLN("I leave the listen zone");
-        for (int i = 0; i < sizeof(buf); i++)
-          Serial.write(buf[i]);
-        state_machine = MODE_LISTEN_PG;
-      }
+      if (driver.recv(buf, &len))
+        for (uint8_t r = 0; r < 50; r++)
+          Serial.write(buf[r]);
     }
+    listening_pg();
+
     break;
   }
   case MODE_SEND_OASIS:
@@ -234,43 +231,57 @@ void loop()
     pg_interact_while_radio = false;
     // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
     rf_msg_tries++;
-    uint8_t data[150];
-    memset(data, '0', sizeof(buf));
+    // uint8_t data[150];
+    memset(data, '0', sizeof(data));
+    // First I set the time in hours and the master ID
     uint8_t preamble[] = "00XXA1##TIME:H:XX/M:XX/S:XX";
     rtc.updateTime();
+    uint8_t h = rtc.getHours();
+    uint8_t m = rtc.getMinutes();
     uint8_t offset = 8;
-    preamble[offset + 7] = (rtc.getHours() / 10) + '0';
-    preamble[offset + 8] = (rtc.getHours() % 10) + '0';
-    preamble[offset + 12] = (rtc.getMinutes() / 10) + '0';
-    preamble[offset + 13] = (rtc.getMinutes() % 10) + '0';
-    preamble[offset + 17] = (rtc.getSeconds() / 10) + '0';
-    preamble[offset + 18] = (rtc.getSeconds() % 10) + '0';
-    //TODO: Integrate the UUID in the msg
+    preamble[offset + 12] = (m / 10) + '0';
+    preamble[offset + 13] = (m % 10) + '0';
+    preamble[4] = sys_rf.UUID_RF[0];
+    preamble[5] = sys_rf.UUID_RF[1];
+    preamble[offset + 7] = (h / 10) + '0';
+    preamble[offset + 8] = (h % 10) + '0';
+    //Copy in the data global variable
     memcpy(data, preamble, sizeof(preamble));
+    //This variable is the offset of all the radio msg bellow:
+    uint16_t index = 28;
+    for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++) //Introduce the messages in the data buffer
+      if (radio_waitting_msg.request_MANUAL[msg])
+        send_nodo(index, sys_rf.UUID_RF, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
+      else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
+      {
+        char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
+        send_nodo(index, sys_rf.UUID_RF, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
+      }
+      else if (radio_waitting_msg.request_STOP_ALL[msg])
+        send_nodo(index, sys_rf.UUID_RF, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
     uint8_t times = 8; //6 times better
     while (times-- > 0)
     {
+      rtc.updateTime();
+      uint8_t s = rtc.getSeconds();
+      data[offset + 17] = (s / 10) + '0';
+      data[offset + 18] = (s % 10) + '0';
+      //I send the msg without manager
       driver.send((const uint8_t *)data, sizeof(data));
       driver.waitPacketSent();
+      for (int i = 0; i < 100; i++)
+        Serial.write(data[i]);
+      Serial.println(" ");
     }
-    for (int i = 0; i < 100; i++)
-      Serial.write(data[i]);
-    Serial.println(" ");
     state_machine = MODE_LISTEN_PG;
     break;
   }
-  default:
-    break;
-  }
-  if (state_machine == MODE_LISTEN_OASIS)
-  {
-  }
-  else if (state_machine == MODE_SEND_OASIS)
-  {
-  }
-  else if (state_machine == MODE_LISTEN_PG)
+  case MODE_LISTEN_PG:
   {
     listening_pg();
+  }
+  default:
+    break;
   }
 
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
@@ -387,6 +398,7 @@ void loop()
     DPRINTLN(rtc.stringTime());
     if (rtc.getSeconds() > 40)
     {
+      DPRINTLN("I send to oasis: ");
       //I listen the ack of the nodes
       rtc.setAlarmMode(6);
       rtc.setAlarm(28, 0, 0, 0, 0);
@@ -395,52 +407,13 @@ void loop()
     else
     {
       //I send nodes
+      DPRINTLN("I listen to oasis: ");
       rtc.setAlarmMode(6);
       rtc.setAlarm(59, 0, 0, 0, 0);
       state_machine = MODE_LISTEN_OASIS;
     }
   }
-  if (oasis_send) // Its the time of sendding the info
-  {
 
-    /*
-    uint8_t counter_syn = 0;
-    while (counter_syn <= 10) // I try to send the message for 25 times, if I fail print kill me.
-    {
-      if (millis() - start >= 20) // Every 400ms I send a message to the oasis hoping they will receive them
-      {
-        //prepare_message  --- This function spends 400ms to compleat
-        for (uint8_t i = 0; i < sizeof(data); i++)
-          data[i] = 'z';
-        uint16_t index = 0; // This index is just for moving into the array
-        data[index++] = '_';
-        // if (rf_msg_tries < 2) // Only send time one time
-        send_nodo(index, sys_rf.UUID_RF, REQUEST_TIME, 0, 0, 0, asignacion);
-        for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++) //Introduce the messages in the data buffer
-          if (radio_waitting_msg.request_MANUAL[msg])
-            send_nodo(index, sys_rf.UUID_RF, REQUEST_MANUAL, radio_waitting_msg.valve_info[0][msg], radio_waitting_msg.valve_info[1][msg], radio_waitting_msg.valve_info[2][msg], asignacion);
-          else if (radio_waitting_msg.request_ASSIGNED_VALVES[msg])
-          {
-            char temp_assigned[] = {radio_waitting_msg.assigned_info[1][msg], radio_waitting_msg.assigned_info[2][msg], radio_waitting_msg.assigned_info[3][msg], radio_waitting_msg.assigned_info[4][msg]};
-            send_nodo(index, sys_rf.UUID_RF, REQUEST_ASSIGNED_VALVES, radio_waitting_msg.assigned_info[0][msg], 0, 0, temp_assigned);
-          }
-          else if (radio_waitting_msg.request_STOP_ALL[msg])
-            send_nodo(index, sys_rf.UUID_RF, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
-        //This is for debugging
-        //for (uint8_t data_index = 0; data_index < sizeof(data); data_index++)
-        //  Serial.write(data[data_index]);
-        DPRINTLN("sent");
-        counter_syn++;
-        manager.sendtoWait(data, sizeof(data), CLIENT_ADDRESS); //Send to the receivers
-        start = millis();
-      }
-      listening_pg();
-    }
-    counter_syn = 0;
-
-    */
-    oasis_send = false;
-  }
   /*
   Every 30 seconds I test if the irrigation time is the same as the current RTC time. The function that check this is: check_time();
   When this happend I start the program (for example A) and set a timer on: timer A.
@@ -448,7 +421,6 @@ void loop()
 
   The ejecution of the programs in order. THIS PART IS A SAME AND I DO NOT CONSIDER RESPONSIBLE FOR THIS PIECE OF SHIT
   */
-  /*
   if (start_programA)
   {
     if (prog[0].irrigTime[index_prog_A] != 255 && prog[0].irrigTime[index_prog_A] != 0)
@@ -720,8 +692,8 @@ void loop()
   timerE.run();
   timerF.run();
   timerCheck.run();
-  */
 }
+
 void send_nodo(uint16_t &order, uint8_t uuid[], uint8_t msg, char valve, char hour, char minutes, char assigned[])
 {
   //First write the destination of the message:
@@ -1356,7 +1328,6 @@ void listening_pg()
     }
   }
 }
-
 void rtcInt() //this callback funtion is called when rtc interrupt is triggered
 {
   intRtc = true; //set flag to indicate that rtc interrupt was triggered

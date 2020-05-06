@@ -120,8 +120,8 @@ void setup()
   rtc.set24Hour();
   rtc.enableInterrupt(INTERRUPT_AIE);
   rtc.enableTrickleCharge(DIODE_0_3V, ROUT_3K);
-  rtc.setAlarmMode(6);
-  rtc.setAlarm(0, 0, 0, 0, 0);
+  // rtc.setAlarmMode(6);
+  // rtc.setAlarm(0, 0, 0, 0, 0);
   // rtc.setToCompilerTime();
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   attachPCINT(digitalPinToPCINT(SW_SETUP), buttonInt, FALLING);
@@ -147,14 +147,64 @@ void loop()
   switch (state_machine)
   {
   case MODE_FIRST_SYN:
-    if (manager.available()) // Detect radio activity and set a timer for waking up at 00
+  {
+    if (driver.available()) // Detect radio activity and set a timer for waking up at 00
     {
       DPRINTLN("MODE_FIRST_SYNC");
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
-      v.receive_time = true;              //I only receive the time ones
-      if (manager.recvfromAck(buf, &len)) //Just one time at start
-        listen_master(buf);               //This function change the state machine to SLEEP
+      v.receive_time = true;      //I only receive the time ones
+      if (driver.recv(buf, &len)) //Just one time at start
+      {
+        // listen_master(buf);       //This function change the state machine to SLEEP
+        uint8_t uuid_master[] = "A1";
+        uint8_t index_msg = 0;
+        //First I check if this msg is in my net
+        if (from_my_network(uuid_master, buf, index_msg))
+          for (; index_msg < 150; index_msg++)
+          {
+            if (buf[index_msg] == '#')
+            {
+              if (buf[index_msg + 1] == '#') //I have found a msg:
+              {
+                uint8_t buffer_index = 0; // This variable is for offset what I am doing
+                switch (buf[index_msg + 2])
+                {
+                case TIME_MSG:
+                {
+                  //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/";
+                  //uint8_t sead[] = "01234567890  12345678 9012345 67890";
+                  buffer_index = index_msg + 10;
+                  int hours, minutes, day, month, year, seconds;
+                  if (buf[buffer_index - 1] == '0')
+                    hours = buf[buffer_index] - '0';
+                  else
+                    hours = (buf[buffer_index - 1] - '0') * 10 + (buf[buffer_index] - '0');
+                  if (buf[buffer_index + 4] == '0')
+                    minutes = buf[buffer_index + 5] - '0';
+                  else
+                    minutes = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
+                  if (buf[buffer_index + 9] == '0')
+                    seconds = buf[buffer_index + 10] - '0';
+                  else
+                    seconds = (buf[buffer_index + 9] - '0') * 10 + (buf[buffer_index + 10] - '0');
+                  change_time(hours, minutes, 1, 2, seconds, 20);
+                  state_machine = MODE_SLEEP;
+                  DPRINTLN("TIEMPO CAMBIADO A: ");
+                  DPRINTLN(rtc.stringTime());
+                  break;
+                }
+                default:
+                  DPRINT("");
+                }
+              }
+            }
+            // if (buf[index_msg] == '_')
+            // break;
+          }
+        //for (int i = 0; i < 180; i++)
+        //  Serial.write(buf[i]);
+      }
       intRtc = 0;
       v.counter_secure_close = DEAD_TIME_COUNTER;
       v.send_ack = true;      //Continue sending ack to emiter
@@ -164,19 +214,137 @@ void loop()
       to_sleep = false;
     }
     ledBlink(LED_SETUP, 100);
+    delay(100);
     break;
+  }
   case MODE_SLEEP:
     driver.sleep();
     lowPower.sleep_delay(100);
     break;
   case MODE_AWAKE:
-    if (manager.available()) // Detect radio activity and set a timer for waking up at 00
+    if (driver.available()) // Detect radio activity and set a timer for waking up at 00
     {
       DPRINTLN("Received");
       uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
-      if (manager.recvfromAck(buf, &len))
-        listen_master(buf);     //This function change the state machine to SLEEP
+      if (driver.recv(buf, &len))
+      {
+        // listen_master(buf);     //This function change the state machine to SLEEP
+        uint8_t uuid_master[] = "A1";
+        uint8_t index_msg = 0;
+        //First I check if this msg is in my net
+        if (from_my_network(uuid_master, buf, index_msg))
+        {
+          for (; index_msg < 150; index_msg++)
+          {
+            if (buf[index_msg] == '#')
+            {
+              if (buf[index_msg + 1] == '#') //I have found a msg:
+              {
+                uint8_t buffer_index = 0; // This variable is for offset what I am doing
+                switch (buf[index_msg + 2])
+                {
+                case TIME_MSG:
+                {
+                  //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/";
+                  //uint8_t sead[] = "01234567890  12345678 9012345 67890";
+                  buffer_index = index_msg + 10;
+                  int hours, minutes, day, month, year, seconds;
+                  if (buf[buffer_index - 1] == '0')
+                    hours = buf[buffer_index] - '0';
+                  else
+                    hours = (buf[buffer_index - 1] - '0') * 10 + (buf[buffer_index] - '0');
+                  if (buf[buffer_index + 4] == '0')
+                    minutes = buf[buffer_index + 5] - '0';
+                  else
+                    minutes = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
+                  if (buf[buffer_index + 9] == '0')
+                    seconds = buf[buffer_index + 10] - '0';
+                  else
+                    seconds = (buf[buffer_index + 9] - '0') * 10 + (buf[buffer_index + 10] - '0');
+                  rtc.updateTime();
+                  // int my_time = rtc.getSeconds();
+                  // if (my_time != seconds)
+                  // {
+                  //if (seconds < 60)
+                  //  seconds++;
+                  //I received the time and change
+                  rtc.set24Hour();
+                  uint8_t currentTime[8];
+                  currentTime[0] = rtc.DECtoBCD(0);
+                  currentTime[1] = rtc.DECtoBCD(seconds);
+                  currentTime[2] = rtc.DECtoBCD(minutes);
+                  currentTime[3] = rtc.DECtoBCD(hours);
+                  currentTime[4] = rtc.DECtoBCD(1);
+                  currentTime[5] = rtc.DECtoBCD(1);
+                  currentTime[6] = rtc.DECtoBCD(20);
+                  currentTime[7] = rtc.DECtoBCD(0);
+                  rtc.setTime(currentTime, TIME_ARRAY_LENGTH);
+                  DPRINTLN("TIME CHANGE");
+                  DPRINTLN(rtc.stringTime());
+                  //rtc.setAlarmMode(6);
+                  //rtc.setAlarm(30, 0, 0, 0, 0);
+                  // state_machine = MODE_SLEEP;
+                  // }
+                  break;
+                }
+                case ASSIGNED_MSG:
+                {
+                  //##ASIGNED#720#045:099:004:035#00
+                  buffer_index = index_msg + 10;
+                  uint8_t id_msg = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0') + 1;
+                  DPRINT("Assigned done in id: ");
+                  DPRINT(id_msg);
+                  DPRINT(" outputs: ");
+                  uint8_t offset_msg = 0;
+                  uint8_t out[4];
+                  for (uint8_t msg_index = 0; msg_index < 4; msg_index++, offset_msg += 4)
+                  {
+                    out[msg_index] = (buf[buffer_index + 4 + offset_msg] - '0') * 100 + (buf[buffer_index + 5 + offset_msg] - '0') * 10 + (buf[buffer_index + 6 + offset_msg] - '0');
+                    DPRINT(out[msg_index] + 1);
+                    DPRINT(" ");
+                  }
+                  DPRINTLN(" ");
+                  break;
+                }
+                case MANVAL_MSG:
+                {
+                  //##MANVAL#002#00:10#A1#MAN
+                  //--012345678901234567890123456
+                  buffer_index = index_msg + 9;
+                  uint8_t valve_action = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0');
+                  uint8_t valve_time_hours = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
+                  uint8_t valve_time_minutes = (buf[buffer_index + 7] - '0') * 10 + (buf[buffer_index + 8] - '0');
+                  DPRINT("Valve action: ");
+                  DPRINT(valve_action);
+                  DPRINT(" time: ");
+                  DPRINT(valve_time_hours);
+                  DPRINT(":");
+                  DPRINTLN(valve_time_minutes);
+                  break;
+                }
+                case STOP_MSG:
+                {
+                  //##STOP#ALL#00
+                  for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
+                    if (v.valves_on[i])
+                    {
+                      v.valves_on[i] = false;
+                      valveAction(i + 1, false);
+                    }
+                  break;
+                }
+                default:
+                  DPRINTLN(" ");
+                }
+              }
+            }
+          }
+        }
+      }
+      //for (int i = 0; i < 180; i++)
+      //  Serial.write(buf[i]);
+
       v.receive_time = false;   //I only receive the time ones
       ledBlink(LED_SETUP, 500); //A led ON to realize that I it es continously receiving
       to_sleep = true;
@@ -205,13 +373,13 @@ void loop()
           DPRINTLN("1 min awake");
           while (millis() - time_awake < 60000)
           {
-            if (manager.available())
+            if (driver.available())
             { // Detect radio activity and set a timer for waking up at 00
               uint8_t buf[150];
               uint8_t len = sizeof(buf);
-              v.receive_time = true;              //I only receive the time ones
-              if (manager.recvfromAck(buf, &len)) //Just one time at start
-                listen_master(buf);               //This function change the state machine to SLEEP
+              v.receive_time = true;      //I only receive the time ones
+              if (driver.recv(buf, &len)) //Just one time at start
+                listen_master(buf);       //This function change the state machine to SLEEP
               intRtc = 0;
               v.counter_secure_close = DEAD_TIME_COUNTER;
               v.send_ack = true;      //Continue sending ack to emiter
@@ -458,154 +626,6 @@ void listen_master(uint8_t buf[]) // Listen and actuate in consideration
   bool is_for_me = false;
   uint8_t buffer_index = 0; // This variable is for offset what I am doing
   // I execute all the actions saved in the buffer start_msg_letter[]
-  while (index_start_msg > 0)
-  {
-    switch (buf[start_msg_letter[--index_start_msg]])
-    {
-    case MANVAL_MSG:
-    {
-      DPRINTLN("VALVE ACTION");
-      //##MANVAL#002#00:10#A1#MAN
-      //--012345678901234567890123456
-      DPRINTLN("");
-
-      if (buf[start_msg_letter[index_start_msg] + 17] == sys.master_id[0] && buf[start_msg_letter[index_start_msg] + 18] == sys.master_id[1])
-      {
-        buffer_index = start_msg_letter[index_start_msg] + 7;
-        uint8_t valve_action = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0');
-        uint8_t valve_time_hours = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
-        uint8_t valve_time_minutes = (buf[buffer_index + 7] - '0') * 10 + (buf[buffer_index + 8] - '0');
-        DPRINT("Valve action: ");
-        DPRINT(valve_action);
-        DPRINT(" time: ");
-        DPRINT(valve_time_hours);
-        DPRINT(":");
-        DPRINTLN(valve_time_minutes);
-
-        for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
-          if (sys.assigned_output[i] == valve_action)
-            if (valve_time_hours == 0 && valve_time_minutes == 0)
-            { //I close the valve
-              if (v.valves_on[i])
-              {
-                v.valves_on[i] = false;
-                valveAction(i + 1, false);
-              }
-            }
-            else
-            { //I open the valve
-              if (!v.valves_on[i])
-              {
-                valveAction(i + 1, true);
-                v.valves_on[i] = true;
-              }
-            }
-      }
-      break;
-    }
-    case TIME_MSG:
-    {
-      //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/";
-      //uint8_t sead[] = "01234567890  12345678 9012345 67890";
-      buffer_index = start_msg_letter[index_start_msg] + 8;
-      int hours, minutes, day, month, year, seconds;
-      if (buf[buffer_index - 1] == '0')
-        hours = buf[buffer_index] - '0';
-      else
-        hours = (buf[buffer_index - 1] - '0') * 10 + (buf[buffer_index] - '0');
-      if (buf[buffer_index + 4] == '0')
-        minutes = buf[buffer_index + 5] - '0';
-      else
-        minutes = (buf[buffer_index + 4] - '0') * 10 + (buf[buffer_index + 5] - '0');
-      if (buf[buffer_index + 9] == '0')
-        seconds = buf[buffer_index + 10] - '0';
-      else
-        seconds = (buf[buffer_index + 9] - '0') * 10 + (buf[buffer_index + 10] - '0');
-      if (buf[buffer_index + 14] == '0')
-        day = buf[buffer_index + 15] - '0';
-      else
-        day = (buf[buffer_index + 14] - '0') * 10 + (buf[buffer_index + 15] - '0');
-      if (buf[buffer_index + 19] == '0')
-        month = buf[buffer_index + 20] - '0';
-      else
-        month = (buf[buffer_index + 19] - '0') * 10 + (buf[buffer_index + 20] - '0');
-      if (seconds < 53 && seconds > 1)
-        seconds -= 1;
-      if (v.receive_time) //I only change the RTC time ones
-        change_time(hours, minutes, day, month, seconds, 2020);
-      state_machine = MODE_SLEEP; //I change the state of the machine
-      break;
-    }
-    case ASSIGNED_MSG:
-    {
-      DPRINTLN("ASSIGNED IN PROGRESS");
-
-      //##ASIGNED#720#045:099:004:035#00
-      buffer_index = start_msg_letter[index_start_msg] + 8;
-      Serial.write(buf[buffer_index - 1]);
-      Serial.write(buf[buffer_index + 21]);
-      Serial.write(buf[buffer_index + 20]);
-
-      //DPRINTLN("");
-      uint8_t id_msg = (buf[buffer_index] - '0') * 100 + (buf[buffer_index + 1] - '0') * 10 + (buf[buffer_index + 2] - '0') + 1;
-      //  I test if the message is for me checking the unique ID
-      // This only is used when the assignation message is sent
-      if (sys.id == id_msg && buf[buffer_index + 20] == sys.master_id[0] && buf[buffer_index + 21] == sys.master_id[1])
-        is_for_me = true;
-      else
-        is_for_me = false;
-      DPRINT("Assigned done in id: ");
-      DPRINT(id_msg);
-      DPRINT(" outputs: ");
-      uint8_t offset_msg = 0;
-      uint8_t out[4];
-      for (uint8_t msg_index = 0; msg_index < 4; msg_index++, offset_msg += 4)
-      {
-        out[msg_index] = (buf[buffer_index + 4 + offset_msg] - '0') * 100 + (buf[buffer_index + 5 + offset_msg] - '0') * 10 + (buf[buffer_index + 6 + offset_msg] - '0');
-        DPRINT(out[msg_index] + 1);
-        DPRINT(" ");
-      }
-      // If the node ID is the same as saved then execute
-      if (is_for_me)
-      {
-        DPRINTLN("Es para mi, hago la asignación");
-        sys.assigned_output[0] = out[0] + 1;
-        sys.assigned_output[1] = out[1] + 1;
-        sys.assigned_output[2] = out[2] + 1;
-        sys.assigned_output[3] = out[3] + 1;
-
-        digitalWrite(CS_RF, HIGH); //unselect rf
-        flash.eraseSector(FLASH_SYS_DIR);
-        flash.writeAnything(FLASH_SYS_DIR, sys);
-        digitalWrite(CS_RF, LOW);
-      }
-      break;
-    }
-    case STOP_MSG:
-    {
-      //##STOP#ALL#00
-      buffer_index = start_msg_letter[index_start_msg];
-      if (buf[buffer_index + 9] == sys.master_id[0] && buf[buffer_index + 10] == sys.master_id[1])
-      {
-        for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
-          if (v.valves_on[i])
-          {
-            v.valves_on[i] = false;
-            valveAction(i + 1, false);
-          }
-      }
-      else
-      {
-        DPRINTLN("Esto no es de mi master, es para el: ");
-        Serial.write(buf[buffer_index + 9]);
-        Serial.write(buf[buffer_index + 10]);
-      }
-      break;
-    }
-    default:
-      DPRINTLN("NO TIENE QUE SALIR");
-    }
-  }
 }
 void send_master(uint8_t msg) // I just have to send the flash info for getting the ack
 {
@@ -621,7 +641,15 @@ void send_master(uint8_t msg) // I just have to send the flash info for getting 
     batery_level == 99;
   data[8] = (batery_level / 10) + '0';
   data[9] = (batery_level % 10) + '0';
-  manager.sendtoWait(data, 15, SERVER_ADDRESS);
+  // manager.sendtoWait(data, 15, SERVER_ADDRESS);
+  uint8_t counter = 0;
+  do
+  {
+    driver.send((const uint8_t *)data, sizeof(data));
+    driver.waitPacketSent();
+    delay(10);
+    counter++;
+  } while (counter < 2);
 }
 void change_time(int hours, int minutes, int day, int month, int seconds, int year)
 {
@@ -676,4 +704,24 @@ void ledBlink(uint8_t pin, long milli)
   digitalWrite(pin, 1);
   delay(milli);
   digitalWrite(pin, 0);
+}
+bool from_my_network(uint8_t *master_uuid, uint8_t *received_msg, uint8_t &index_msg)
+{
+  //I just find the uuid in the msg, if it is I return true:
+  //00XXA1XX I want to check the A1 elements
+  for (uint8_t element = 0; element < 10; element++)
+    if (received_msg[element] == 88)
+      if (received_msg[element + 1] == 88)
+      {
+        index_msg = element + 2; //I modified the index to point to the start of the msg
+        if (received_msg[index_msg] == master_uuid[0] && received_msg[++index_msg] == master_uuid[1])
+        {
+          index_msg++;
+          return true;
+        }
+        else
+          return false;
+        break; //If I find something and do not check I break
+      }
+  return false;
 }
