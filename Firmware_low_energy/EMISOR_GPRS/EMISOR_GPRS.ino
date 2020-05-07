@@ -172,6 +172,7 @@ void loop()
 {
   mqttClient.loop();
   listening_pg();
+  driver.sleep();
   if (!mqttClient.connected())
   {
     DPRINTLN("Mqtt connection fail");
