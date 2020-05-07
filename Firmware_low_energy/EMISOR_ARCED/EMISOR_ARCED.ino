@@ -218,9 +218,12 @@ void loop()
       if (driver.recv(buf, &len))
         for (uint8_t r = 0; r < 50; r++)
           Serial.write(buf[r]);
+      ack.offset += 10;
+      if (!ack.clear)
+        ack.counter = millis();
+      ack.clear = true;
     }
     listening_pg();
-
     break;
   }
   case MODE_SEND_OASIS:
@@ -274,104 +277,8 @@ void loop()
         Serial.write(data[i]);
       Serial.println(" ");
     }
-    state_machine = MODE_CLEAR_RF_MSG;
-    break;
-  }
-  case MODE_CLEAR_RF_MSG:
-  {
-    if ((ack.clear && (millis() - ack.counter > 12000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
-    {
-      for (int i = 0; i < sizeof(buf); i++)
-        Serial.write(buf[i]);
-      uint8_t buf_info[120];
-      memcpy(buf_info, buf, sizeof(buf)); //copy the global and slow array to local and analize
-      //Extract the info and save in bool buffer:
-      for (uint8_t p = 0; p < 140; p++)
-        if (buf_info[p] == 'K')
-          if (hex2int(buf_info[p + 2]) <= 8)
-            ack.oasis[hex2int(buf_info[p + 2]) - 1][0] = true; //Save in a bool[] for later
-          else
-            ack.oasis[hex2int(buf_info[p + 2]) - 8 - 1][1] = true;
-      //I send the commands to PG6011 in order to visualize the communication problems only 1 every 5 minutes
-      if (ack.save_ack_pg_counter > 5)
-      {
-        ack.save_ack_pg_counter = 0;
-        uint8_t oasis_number_8 = 0, binary_index_8 = 1;
-        uint8_t oasis_number_16 = 0, binary_index_16 = 1;
-        for (uint8_t a = 0; a < sys_rf.NUMBER_NODES; a++)
-          if (a < 8)
-          {
-            DPRINT(ack.oasis[a][0]);
-            if (!ack.oasis[a][0])
-              oasis_number_8 += binary_index_8;
-            binary_index_8 *= 2;
-            ack.oasis[a][0] = false; //I clear the variable for the next time
-          }
-          else
-          {
-            DPRINT(ack.oasis[a - 8][1]);
-            if (!ack.oasis[a - 8][1])
-              oasis_number_16 += binary_index_16;
-            binary_index_16 *= 2;
-            ack.oasis[a - 8][1] = false; //I clear the variable for the next time
-          }
-        //Writting in the PG memmory
-        DPRINTLN("_");
-        DPRINTLN(oasis_number_8);
-        DPRINTLN(oasis_number_16);
-        DPRINTLN("_");
-        cmd_write_data[13] = '3';
-        cmd_write_data[14] = 'F';
-        String str_oasis_number = String(oasis_number_8, HEX);
-        if (str_oasis_number.length() == 1)
-          str_oasis_number = '0' + str_oasis_number;
-        str_oasis_number.toUpperCase();
-        cmd_write_data[15] = '0';
-        cmd_write_data[17] = str_oasis_number.charAt(0);
-        cmd_write_data[18] = str_oasis_number.charAt(1);
-        pgCommand(cmd_write_data, sizeof(cmd_write_data));
-        for (i = 0; i < sizeof(cmd_write_data); i++)
-          Serial.write(cmd_write_data[i]);
-        if (sys_rf.NUMBER_NODES > 8)
-        {
-          delay(800);
-          str_oasis_number = String(oasis_number_16, HEX);
-          if (str_oasis_number.length() == 1)
-            str_oasis_number = '0' + str_oasis_number;
-          str_oasis_number.toUpperCase();
-          cmd_write_data[15] = '1';
-          cmd_write_data[17] = str_oasis_number.charAt(0);
-          cmd_write_data[18] = str_oasis_number.charAt(1);
-          pgCommand(cmd_write_data, sizeof(cmd_write_data));
-          for (i = 0; i < sizeof(cmd_write_data); i++)
-            Serial.write(cmd_write_data[i]);
-        }
-        DPRINT("SAVE RAM: ");
-        DPRINTLN(freeRam());
-      }
-      else
-        ack.save_ack_pg_counter++;
-      //Clear all the necessary flags
-      ack.offset = 0;
-      ack.clear = false;
-      auto_program_flag = false;
-      pg_interact_while_radio = false;
-      rf_msg_tries = 0;
-      for (uint8_t p = 0; p < 140; p++)
-        buf[p] = '_';
-      for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
-      {
-        radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
-        radio_waitting_msg.request_TIME[x] = false;
-        radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
-        radio_waitting_msg.request_STOP_ALL[x] = false;
-        radio_waitting_msg.request_FULL_MESSAGE[x] = false;
-      }
-      radio_waitting_msg.num_message_flags = 0;
-      DPRINTLN("CLEAR MEMMORY RF FLAGS");
-    }
-
     state_machine = MODE_LISTEN_PG;
+    break;
   }
   case MODE_LISTEN_PG:
   {
@@ -379,6 +286,98 @@ void loop()
   }
   default:
     break;
+  }
+
+  if ((ack.clear && (millis() - ack.counter > 12000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
+  {
+    for (int i = 0; i < sizeof(buf); i++)
+      Serial.write(buf[i]);
+    uint8_t buf_info[120];
+    memcpy(buf_info, buf, sizeof(buf)); //copy the global and slow array to local and analize
+    //Extract the info and save in bool buffer:
+    for (uint8_t p = 0; p < 140; p++)
+      if (buf_info[p] == 'K')
+        if (hex2int(buf_info[p + 2]) <= 8)
+          ack.oasis[hex2int(buf_info[p + 2]) - 1][0] = true; //Save in a bool[] for later
+        else
+          ack.oasis[hex2int(buf_info[p + 2]) - 8 - 1][1] = true;
+    //I send the commands to PG6011 in order to visualize the communication problems only 1 every 5 minutes
+    if (ack.save_ack_pg_counter > 5)
+    {
+      ack.save_ack_pg_counter = 0;
+      uint8_t oasis_number_8 = 0, binary_index_8 = 1;
+      uint8_t oasis_number_16 = 0, binary_index_16 = 1;
+      for (uint8_t a = 0; a < sys_rf.NUMBER_NODES; a++)
+        if (a < 8)
+        {
+          DPRINT(ack.oasis[a][0]);
+          if (!ack.oasis[a][0])
+            oasis_number_8 += binary_index_8;
+          binary_index_8 *= 2;
+          ack.oasis[a][0] = false; //I clear the variable for the next time
+        }
+        else
+        {
+          DPRINT(ack.oasis[a - 8][1]);
+          if (!ack.oasis[a - 8][1])
+            oasis_number_16 += binary_index_16;
+          binary_index_16 *= 2;
+          ack.oasis[a - 8][1] = false; //I clear the variable for the next time
+        }
+      //Writting in the PG memmory
+      DPRINTLN("_");
+      DPRINTLN(oasis_number_8);
+      DPRINTLN(oasis_number_16);
+      DPRINTLN("_");
+      cmd_write_data[13] = '3';
+      cmd_write_data[14] = 'F';
+      String str_oasis_number = String(oasis_number_8, HEX);
+      if (str_oasis_number.length() == 1)
+        str_oasis_number = '0' + str_oasis_number;
+      str_oasis_number.toUpperCase();
+      cmd_write_data[15] = '0';
+      cmd_write_data[17] = str_oasis_number.charAt(0);
+      cmd_write_data[18] = str_oasis_number.charAt(1);
+      pgCommand(cmd_write_data, sizeof(cmd_write_data));
+      for (i = 0; i < sizeof(cmd_write_data); i++)
+        Serial.write(cmd_write_data[i]);
+      if (sys_rf.NUMBER_NODES > 8)
+      {
+        delay(800);
+        str_oasis_number = String(oasis_number_16, HEX);
+        if (str_oasis_number.length() == 1)
+          str_oasis_number = '0' + str_oasis_number;
+        str_oasis_number.toUpperCase();
+        cmd_write_data[15] = '1';
+        cmd_write_data[17] = str_oasis_number.charAt(0);
+        cmd_write_data[18] = str_oasis_number.charAt(1);
+        pgCommand(cmd_write_data, sizeof(cmd_write_data));
+        for (i = 0; i < sizeof(cmd_write_data); i++)
+          Serial.write(cmd_write_data[i]);
+      }
+      DPRINT("SAVE RAM: ");
+      DPRINTLN(freeRam());
+    }
+    else
+      ack.save_ack_pg_counter++;
+    //Clear all the necessary flags
+    ack.offset = 0;
+    ack.clear = false;
+    auto_program_flag = false;
+    pg_interact_while_radio = false;
+    rf_msg_tries = 0;
+    for (uint8_t p = 0; p < 140; p++)
+      buf[p] = '_';
+    for (uint8_t x = 0; x < MAX_NUM_MESSAGES; x++) // I clear all the flags of the messages beacuse I have sent it properly
+    {
+      radio_waitting_msg.request_MANUAL[x] = false; // the max number of messages are 4
+      radio_waitting_msg.request_TIME[x] = false;
+      radio_waitting_msg.request_ASSIGNED_VALVES[x] = false;
+      radio_waitting_msg.request_STOP_ALL[x] = false;
+      radio_waitting_msg.request_FULL_MESSAGE[x] = false;
+    }
+    radio_waitting_msg.num_message_flags = 0;
+    DPRINTLN("CLEAR MEMMORY RF FLAGS");
   }
 
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also

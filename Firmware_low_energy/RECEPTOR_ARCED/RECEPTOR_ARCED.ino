@@ -174,7 +174,7 @@ void loop()
                   //uint8_t send[] = "##TIME:H:XX  /M:XX/S: XX/D:XX /M:XX/";
                   //uint8_t sead[] = "01234567890  12345678 9012345 67890";
                   buffer_index = index_msg + 10;
-                  int hours, minutes, day, month, year, seconds;  
+                  int hours, minutes, day, month, year, seconds;
                   if (buf[buffer_index - 1] == '0')
                     hours = buf[buffer_index] - '0';
                   else
@@ -190,6 +190,7 @@ void loop()
                   change_time(hours, minutes, 1, 2, seconds, 20);
                   state_machine = MODE_SLEEP;
                   DPRINTLN("TIEMPO CAMBIADO A: ");
+                  rtc.updateTime();
                   DPRINTLN(rtc.stringTime());
                   break;
                 }
@@ -231,7 +232,9 @@ void loop()
       {
         uint8_t uuid_master[] = "A1";
         uint8_t index_msg = 0;
-        //First I check if this msg is in my net
+        //First I check if this msg is in my ne
+        for (int a = 0; a < 150; a++)
+          Serial.write(buf[a]);
         if (from_my_network(uuid_master, buf, index_msg))
           for (; index_msg < 150; index_msg++)
             if (buf[index_msg] == '#' && buf[index_msg + 1] == '#') //I have found a msg:
@@ -298,17 +301,29 @@ void loop()
                 DPRINT(valve_time_hours);
                 DPRINT(":");
                 DPRINTLN(valve_time_minutes);
+                //Check if the valves are save in my memmory:
+                for (uint8_t lol = 0; lol < 4; lol++)
+                  if (sys.assigned_output[lol] == valve_action)
+                    if (valve_time_hours == 0 && valve_time_minutes == 0)
+                    {
+                      valveAction(valve_action, false);
+                    }
+                    else
+                    {
+                      valveAction(valve_action, true);
+                    }
+
                 break;
               }
               case STOP_MSG:
               {
                 //##STOP#ALL#00
                 for (int i = 0; i < 4; i++) // I test if the message is for me and I open, or close the valve.
-                  if (v.valves_on[i])
-                  {
-                    v.valves_on[i] = false;
-                    valveAction(i + 1, false);
-                  }
+                // if (v.valves_on[i])
+                {
+                  v.valves_on[i] = false;
+                  valveAction(i + 1, false);
+                }
                 break;
               }
               default:
@@ -406,16 +421,19 @@ void loop()
     rtc.updateTime();
     DPRINTLN(rtc.stringTime());
     //I decide which state is the one:
-    if (rtc.getSeconds() < 10)
+    if (state_machine != MODE_FIRST_SYN)
     {
-      DPRINTLN("MODE_AWAKE");
-      millix = millis(); // I have to be in AWAKE_MODE for 2 seconds
-      state_machine = MODE_AWAKE;
-    }
-    else
-    {
-      DPRINTLN("MODE_ACK");
-      state_machine = MODE_ACK;
+      if (rtc.getSeconds() < 10)
+      {
+        DPRINTLN("MODE_AWAKE");
+        millix = millis(); // I have to be in AWAKE_MODE for 2 seconds
+        state_machine = MODE_AWAKE;
+      }
+      else
+      {
+        DPRINTLN("MODE_ACK");
+        state_machine = MODE_ACK;
+      }
     }
   }
 }
