@@ -218,24 +218,27 @@ void loop()
     break;
   }
   case MODE_SLEEP:
+  {
     driver.sleep();
     lowPower.sleep_delay(100);
     break;
+  }
   case MODE_AWAKE:
   {
     if (driver.available()) // Detect radio activity and set a timer for waking up at 00
     {
       DPRINTLN("Received");
-      uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+      uint8_t buf[RH_RF95_MAX_MESSAGE_LEN]= { 0 };
       uint8_t len = sizeof(buf);
       if (driver.recv(buf, &len))
       {
         uint8_t uuid_master[] = "A1";
         uint8_t index_msg = 0;
-        //First I check if this msg is in my ne
+        //First I check if this msg is in my network
         for (int a = 0; a < 150; a++)
           Serial.write(buf[a]);
         if (from_my_network(uuid_master, buf, index_msg))
+        {
           for (; index_msg < 150; index_msg++)
             if (buf[index_msg] == '#' && buf[index_msg + 1] == '#') //I have found a msg:
             {
@@ -330,8 +333,12 @@ void loop()
                 DPRINTLN(" ");
               }
             }
+        }
+        else
+          DPRINTLN("NOT FOR ME, COLISION EXCEPTION");
       }
-
+      else
+        DPRINTLN("PARSED FAIL");
       v.receive_time = false;   //I only receive the time ones
       ledBlink(LED_SETUP, 500); //A led ON to realize that I it es continously receiving
       to_sleep = true;

@@ -419,6 +419,16 @@ void loop()
       state_machine = MODE_LISTEN_OASIS;
     }
   }
+  if (Serial.available())
+  {
+    int a = Serial.read();
+    if (a == 97)
+    {
+      char data[] = "THIS IS A TEST FOR MODIFIED THE PARSED INFO";
+      driver.send((const uint8_t *)data, sizeof(data));
+      driver.waitPacketSent();
+    }
+  }
 
   /*
   Every 30 seconds I test if the irrigation time is the same as the current RTC time. The function that check this is: check_time();
