@@ -163,7 +163,6 @@ void setup()
   // char assigned[] = {21, 34, 54, 67};
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
-  // delay(500);
   // json_valve_action(false, 3, 0, 5);
   // delay(500);
   // json_program_action(false, 'B');
@@ -187,6 +186,7 @@ void loop()
   // Every 30 seconds I publish that I am ALIVE
   if (millis() - millix >= 50000) // Printing that I am not dead
   {
+    check_time();
     uint16_t b;
     analogReference(INTERNAL);
     for (int i = 0; i < 3; i++)
@@ -1822,4 +1822,36 @@ String getValue(String data, char separator, int index)
       strIndex[1] = (i == maxIndex) ? i + 1 : i;
     }
   return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
+}
+void check_time() // This function test if the current time fix with the program time
+{
+  rtc.updateTime();
+  uint8_t rtc_value = rtc.getWeekday();
+  uint8_t value_to_AND = 0;
+  for (uint8_t index_program = 0; index_program < 6; index_program++)
+  {
+    if (rtc_value == 0)
+      rtc_value = 7;
+    value_to_AND = pow(2, rtc_value - 1);
+    if (prog[index_program].wateringDay & value_to_AND)
+      for (uint8_t index_time_h = 0; index_time_h < 6; index_time_h++)
+        if (prog[index_program].start[index_time_h][0] == rtc.getHours())
+          if (prog[index_program].start[index_time_h][1] == rtc.getMinutes())
+          {
+            DPRINTLN("ES LA HORA BUENA");
+            if (index_program == 0)
+              json_program_action(true, 'A');
+            else if (index_program == 1)
+              json_program_action(true, 'B');
+            else if (index_program == 2)
+              json_program_action(true, 'C');
+            else if (index_program == 3)
+              json_program_action(true, 'D');
+            else if (index_program == 4)
+              json_program_action(true, 'E');
+            else if (index_program == 4)
+              json_program_action(true, 'E');
+          }
+    // check if the hours are fix and we can start a program
+  }
 }
