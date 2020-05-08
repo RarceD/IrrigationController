@@ -7,7 +7,7 @@
 
 #include <JamAtm-Vyrsa.h>
 
-// #define DEBUG_ON
+#define DEBUG_ON
 #ifdef DEBUG_ON
 #define DPRINT(...) Serial.print(__VA_ARGS__)
 #define DPRINTLN(...) Serial.println(__VA_ARGS__)
@@ -42,20 +42,20 @@
 #define PCPIN *portInputRegister(digitalPinToPort(PCINT_PIN))
 /******************************************************************* declarations  ************************************************************************************/
 
-typedef enum
-{ // This enum contains the possible actions
-  REQUEST_MANVAL,
-  REQUEST_MANUAL,
-  REQUEST_TIME,
-  REQUEST_ASSIGNED_VALVES,
-  REQUEST_STOP_ALL,
-  REQUEST_FULL_MESSAGE
-} messages_radio;
+typedef struct
+{
+  bool manual_web;
+  bool active[10];
+  uint8_t number_timers;
+  uint8_t valve_number[10];
+  uint32_t millix[10];
+  uint32_t times[10];
+} stopManualWeb;
+
 typedef struct
 {
   uint8_t id;
   char devUuid[UUID_LEN];
-
 } sysVar;
 typedef struct
 {
@@ -86,11 +86,12 @@ Sleep lowPower;
 Jam jam;
 sysVar sys;
 active_to_stop active;
+stopManualWeb stop_man_web; //MAX 10 valves open at the same time
 
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[50];
 bool rf_flag = false;
-uint8_t UUID_1[] = {'A', '1'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
+uint8_t UUID_1[] = {'A', '2'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
 String pg;
 char pgData[PG_MAX_LEN];
 uint8_t i, j, rfId, cmd;
@@ -99,7 +100,7 @@ volatile bool intRtc = false;
 uint8_t valveDef[MAX_CHILD], progDef[TOTAL_PROG];
 bool gprs_on = true, mode = false, comError[MAX_CHILD];
 
-uint32_t millix;
+uint32_t millix, millixx;
 bool ones_time;
 bool pressed_times;
 
@@ -154,10 +155,11 @@ void setup()
   connectSIM();
   connectMqtt();
   millix = millis();
+  millixx = millis();
   // json_program_valves(0);
   //At re-starting the pg is going to read all the info and send it to the web
   // getAllFromPG(); // Have no idea why i can't do both at the same time
-  //  json_connect_app(); //for sendding to the web that everithing is ok
+  json_connect_app(); //for sendding to the web that everithing is ok
   // char assigned[] = {21, 34, 54, 67};
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
@@ -165,6 +167,10 @@ void setup()
   // json_valve_action(false, 3, 0, 5);
   // delay(500);
   // json_program_action(false, 'B');
+  stop_man_web.manual_web = false;
+  stop_man_web.number_timers = 0;
+  for (uint8_t t = 0; t < 10; t++)
+    stop_man_web.active[t] = false;
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -172,7 +178,6 @@ void loop()
 {
   mqttClient.loop();
   listening_pg();
-  driver.sleep();
   if (!mqttClient.connected())
   {
     DPRINTLN("Mqtt connection fail");
@@ -180,7 +185,7 @@ void loop()
     delay(5);
   }
   // Every 30 seconds I publish that I am ALIVE
-  if (millis() - millix >= 20000) // Printing that I am not dead
+  if (millis() - millix >= 50000) // Printing that I am not dead
   {
     uint16_t b;
     analogReference(INTERNAL);
@@ -217,6 +222,33 @@ void loop()
       delay(50);
     }
     DPRINTLN(freeRam());
+  }
+  if (stop_man_web.manual_web && millis() - millixx >= 10000)
+  {
+    millixx = millis();
+    for (uint8_t t = 0; t < 10; t++)
+      if (stop_man_web.active[t])
+      {
+        DPRINTLN("CHECK");
+        if (millis() - stop_man_web.millix[t] >= stop_man_web.times[t])
+        {
+          DPRINTLN("I close the manual valve with my timer");
+          DPRINTLN(stop_man_web.valve_number[t]);
+          action_valve_pg(0, stop_man_web.valve_number[t], 0, 0);
+          //Save the valve number:
+          stop_man_web.valve_number[t] = 0;
+          //Th current time on timer 0
+          stop_man_web.millix[t] = 0;
+          //The time in ms to stop the valve
+          stop_man_web.times[t] = 0;
+          //The flag of the valve in the struct:
+          stop_man_web.active[t] = false;
+          if (stop_man_web.number_timers > 0)
+            stop_man_web.number_timers--;
+          else
+            stop_man_web.manual_web = false;
+        }
+      }
   }
 }
 /*******************************************************************   functions     ************************************************************************************/
@@ -326,7 +358,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       JsonArray &valves = parsed["valves"];
       //I obtein the values of the parser info:
       String valve_time;
-      int valve_number[25], valve_action[25], valve_min[25], valve_hours[25];
+      uint8_t valve_number[25], valve_action[25], valve_min[25], valve_hours[25];
       //Start the game:
       for (uint8_t index_oasis = 0; index_oasis < valves.size(); index_oasis++)
       {
@@ -356,9 +388,49 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           action_valve_pg(valve_action[index_oasis], valve_number[index_oasis], valve_hours[index_oasis], valve_min[index_oasis]);
           //If is for me I active the flag to stop in case web want it
           if (valve_action[index_oasis] == 0)
+          {
             active.valves[valve_number[index_oasis] - 1] = false;
+            DPRINTLN("NOP");
+            if (stop_man_web.manual_web)
+              for (uint8_t t = 0; t < 10; t++)
+                if (stop_man_web.active[t] && stop_man_web.valve_number[t] == valve_number[index_oasis])
+                {
+                  DPRINTLN("I turn of the timer set for me, KILL IT");
+                  DPRINTLN(stop_man_web.valve_number[t]);
+                  //Save the valve number:
+                  stop_man_web.valve_number[t] = 0;
+                  //Th current time on timer 0
+                  stop_man_web.millix[t] = 0;
+                  //The time in ms to stop the valve
+                  stop_man_web.times[t] = 0;
+                  //The flag of the valve in the struct:
+                  stop_man_web.active[t] = false;
+                  if (stop_man_web.number_timers <= 0)
+                    stop_man_web.manual_web = false;
+                  else
+                    stop_man_web.number_timers--;
+                }
+          }
           else
+          {
+            //This is for general STOP in web:
             active.valves[valve_number[index_oasis] - 1] = true;
+
+            //This is for stopping the PG problem:
+            stop_man_web.manual_web = true;
+            stop_man_web.active[stop_man_web.number_timers] = true;
+            //Save the valve number:
+            stop_man_web.valve_number[stop_man_web.number_timers] = valve_number[index_oasis];
+            //Th current time on timer 0
+            stop_man_web.millix[stop_man_web.number_timers] = millis();
+            //The time in ms to stop the valve
+            stop_man_web.times[stop_man_web.number_timers] = (uint32_t)valve_hours[index_oasis] * 60 * 60 * 1000 + (uint32_t)valve_min[index_oasis] * 60 * 1000;
+            DPRINTLN("TIME: ");
+            Serial.println(stop_man_web.times[stop_man_web.number_timers]);
+            //I increment this pointer:
+            stop_man_web.number_timers++;
+            DPRINTLN("I have set a timer for stopping the valve when min pass");
+          }
           delay(1500);
         }
       }
@@ -418,7 +490,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
       uint16_t mem_pos = 1024;            // This is the position of the starts in PG EEPROM memmory
       uint16_t position_percentage = 144; // This is the position of the irrig % in PG EEPROM memmory
       uint8_t position_week = 0xB0;       //This is for the week day starts
-      uint8_t position_from_to = 0xC0; //For changing the starting and stop irrig day, not year
+      uint8_t position_from_to = 0xC0;    //For changing the starting and stop irrig day, not year
 
       switch (manual_program.charAt(0))
       {
@@ -677,7 +749,6 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
         DPRINTLN(rtc.stringTime());
         DPRINTLN(rtc.stringDate());
-
       }
       //TODO: Write in PG MEMMORY
     }
@@ -743,7 +814,6 @@ void write_start_stop_pg(bool from, String time, uint8_t dir)
   softSerial.write(cmd_write_data, sizeof(cmd_write_data));
   delay(800);
 }
-
 void send_web(char *topic, unsigned int length, int id)
 {
   String ack_topic = String(topic);
