@@ -237,6 +237,8 @@ void loop()
     rf_msg_tries++;
     // uint8_t data[150];
     memset(data, '0', sizeof(data));
+    for (uint8_t d = 0; d < sizeof(data); d++)
+      Serial.write(data[d]);
     // First I set the time in hours and the master ID
     uint8_t preamble[] = "00XXA1##TIME:H:XX/M:XX/S:XX";
     rtc.updateTime();
@@ -424,8 +426,10 @@ void loop()
     int a = Serial.read();
     if (a == 97)
     {
-      char data[] = "THIS IS A TEST FOR MODIFIED THE PARSED INFO";
-      driver.send((const uint8_t *)data, sizeof(data));
+      char datas[] = "THIS IS A TEST FOR MODIFIED THE PARSED INFO";
+      for (uint8_t a = 0; a < sizeof(datas); a++)
+        Serial.print(datas[a]); //[] = "THIS IS A TEST FOR MODIFIED THE PARSED INFO";
+      driver.send((const uint8_t *)datas, sizeof(datas));
       driver.waitPacketSent();
     }
   }

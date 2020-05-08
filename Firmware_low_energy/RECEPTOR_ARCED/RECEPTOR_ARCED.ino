@@ -228,10 +228,12 @@ void loop()
     if (driver.available()) // Detect radio activity and set a timer for waking up at 00
     {
       DPRINTLN("Received");
-      uint8_t buf[RH_RF95_MAX_MESSAGE_LEN]= { 0 };
+      uint8_t buf[200] = {0};
       uint8_t len = sizeof(buf);
       if (driver.recv(buf, &len))
       {
+      for (uint8_t d = 0; d < len; d++)
+        Serial.write(buf[d]);
         uint8_t uuid_master[] = "A1";
         uint8_t index_msg = 0;
         //First I check if this msg is in my network
