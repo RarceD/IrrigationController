@@ -126,7 +126,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   /*
-  char first_mem[] = "VYR_OASIS_A2";
+  char first_mem[] = "VYR_OASIS_A3";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
@@ -148,9 +148,15 @@ void setup()
   // rtc.setToCompilerTime();
   DPRINTLN(rtc.stringTime());
   DPRINTLN(rtc.stringDate());
-  jam.ledBlink(LED_SETUP, 1000);
+  DPRINTLN(rtc.getWeekday()); //This value is 0 for sunday
+  uint16_t d = rtc.getDate();
+  uint16_t m = rtc.getMonth();
+  uint16_t y = 2000 + rtc.getYear();
+  uint16_t weekday = (d += m < 3 ? y-- : y - 2, 23 * m / 9 + d + 4 + y / 4 - y / 100 + y / 400) % 7;
   //Set PG in time:
-  change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
+  if (weekday == 0)
+    weekday = 7;
+  change_time_pg(weekday, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
   print_flash();
   connectSIM();
   connectMqtt();
@@ -159,7 +165,7 @@ void setup()
   // json_program_valves(0);
   //At re-starting the pg is going to read all the info and send it to the web
   // getAllFromPG(); // Have no idea why i can't do both at the same time
-  json_connect_app(); //for sendding to the web that everithing is ok
+  // json_connect_app(); //for sendding to the web that everything is ok
   // char assigned[] = {21, 34, 54, 67};
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
@@ -170,6 +176,7 @@ void setup()
   stop_man_web.number_timers = 0;
   for (uint8_t t = 0; t < 10; t++)
     stop_man_web.active[t] = false;
+  jam.ledBlink(LED_SETUP, 1000);
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -205,6 +212,14 @@ void loop()
     DPRINTLN(freeRam());
     millix = millis();
   }
+  if (Serial.available())
+  {
+    int a = Serial.read();
+    if (a == 97)
+    {
+      check_time();
+    }
+  }
   if (!digitalRead(PCINT_PIN)) //If pressed the button syn with the web
   {
     DPRINTLN("BUTTON PRESSED");
@@ -230,7 +245,7 @@ void loop()
       if (stop_man_web.active[t])
       {
         DPRINTLN("CHECK");
-        if (millis() - stop_man_web.millix[t] >= stop_man_web.times[t])
+        if (millis() - stop_man_web.millix[t] >= stop_man_web.times[t] - 10000)
         {
           DPRINTLN("I close the manual valve with my timer");
           DPRINTLN(stop_man_web.valve_number[t]);
@@ -1742,6 +1757,9 @@ void listening_pg()
       DPRINT(":");
       DPRINT(time_min);
       DPRINT(" Fecha: ");
+      //This command received 0123456 and the RTC received: 1234560 for monday to sunday
+      if (time_day_week == 6)
+        time_day_week = 0;
       DPRINT(time_day_week);
       DPRINT(" Hora: ");
       DPRINT(time_year);
@@ -1849,8 +1867,8 @@ void check_time() // This function test if the current time fix with the program
               json_program_action(true, 'D');
             else if (index_program == 4)
               json_program_action(true, 'E');
-            else if (index_program == 4)
-              json_program_action(true, 'E');
+            else if (index_program == 5)
+              json_program_action(true, 'F');
           }
     // check if the hours are fix and we can start a program
   }
