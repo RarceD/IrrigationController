@@ -64,9 +64,9 @@ void loop()
     int a = Serial.read();
     // Serial.println(a);
     if (a == 97) // Open all valves
-      action_valve_pg(true, 1, 0, 35);
+      action_valve_pg(true, 1, 0, 5);
     if (a == 98) //Close all valves
-      action_valve_pg(false, 1, 0, 35);
+      action_valve_pg(false, 1, 0, 0);
     if (a == 99) //Open all programs
     {
       action_prog_pg(true, 'C');

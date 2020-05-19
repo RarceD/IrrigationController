@@ -100,9 +100,11 @@ volatile bool intRtc = false;
 uint8_t valveDef[MAX_CHILD], progDef[TOTAL_PROG];
 bool gprs_on = true, mode = false, comError[MAX_CHILD];
 
-uint32_t millix, millixx;
+uint32_t millix;
 bool ones_time;
 bool pressed_times;
+bool read_pg_web = false;
+bool send_stop_program = false;
 
 /******************************************************************* setup section ************************************************************************************/
 void setup()
@@ -121,7 +123,6 @@ void setup()
   digitalWrite(SIM_AWK, HIGH);
   oldPort = PCPIN;
   PCMSK |= (1 << PCINT);
-  jam.ledBlink(LED_SETUP, 100);
   softSerial.begin(9600);
   flash.powerUp();
   flash.begin();
@@ -146,8 +147,10 @@ void setup()
   attachPCINT(digitalPinToPCINT(INT_RTC), rtcInt, FALLING);
   rtc.updateTime();
   // rtc.setToCompilerTime();
-  DPRINTLN(rtc.stringTime());
-  DPRINTLN(rtc.stringDate());
+  DPRINT(rtc.stringTime());
+  DPRINT(" ");
+  DPRINT(rtc.stringDate());
+  DPRINT(" ");
   DPRINTLN(rtc.getWeekday()); //This value is 0 for sunday
   uint16_t d = rtc.getDate();
   uint16_t m = rtc.getMonth();
@@ -161,22 +164,31 @@ void setup()
   connectSIM();
   connectMqtt();
   millix = millis();
-  millixx = millis();
-  // json_program_valves(0);
-  //At re-starting the pg is going to read all the info and send it to the web
+  // At re-starting the pg is going to read all the info and send it to the web
   // getAllFromPG(); // Have no idea why i can't do both at the same time
-  // json_connect_app(); //for sendding to the web that everything is ok
   // char assigned[] = {21, 34, 54, 67};
   // json_oasis_paring(true, 1, assigned); //For creating more oasis in the web
   // json_oasis_paring(false, 1, assigned); //Asigned all the valves
   // json_valve_action(false, 3, 0, 5);
-  // delay(500);
-  // json_program_action(false, 'B');
   stop_man_web.manual_web = false;
   stop_man_web.number_timers = 0;
   for (uint8_t t = 0; t < 10; t++)
     stop_man_web.active[t] = false;
-  jam.ledBlink(LED_SETUP, 1000);
+  /*
+  json_connect_app(); //for sendding to the web that everything is ok
+  getAllFromPG();
+  for (int i = 0; i < 6; i++)
+  {
+    json_clear_starts(i);
+    delay(50);
+    json_week_days(i, prog[i].wateringDay);
+    delay(50);
+    json_program_starts(i);
+    delay(50);
+    json_program_valves(i);
+    delay(50);
+  }
+  */
 }
 
 /******************************************************************* main program  ************************************************************************************/
@@ -193,7 +205,36 @@ void loop()
   // Every 30 seconds I publish that I am ALIVE
   if (millis() - millix >= 50000) // Printing that I am not dead
   {
+    //First I check if its the irrig AUTO time
     check_time();
+    //Second I check if there is any manual open valve ON in order to close
+    if (stop_man_web.manual_web)
+    {
+      for (uint8_t t = 0; t < 10; t++)
+        if (stop_man_web.active[t])
+        {
+          DPRINTLN("CHECK");
+          if (millis() - stop_man_web.millix[t] >= stop_man_web.times[t] - 10000)
+          {
+            DPRINTLN("I close the manual valve with my timer");
+            DPRINTLN(stop_man_web.valve_number[t]);
+            action_valve_pg(0, stop_man_web.valve_number[t], 0, 0);
+            //Save the valve number:
+            stop_man_web.valve_number[t] = 0;
+            //Th current time on timer 0
+            stop_man_web.millix[t] = 0;
+            //The time in ms to stop the valve
+            stop_man_web.times[t] = 0;
+            //The flag of the valve in the struct:
+            stop_man_web.active[t] = false;
+            if (stop_man_web.number_timers > 0)
+              stop_man_web.number_timers--;
+            else
+              stop_man_web.manual_web = false;
+          }
+        }
+    }
+    //I send I'm alive to the web
     uint16_t b;
     analogReference(INTERNAL);
     for (int i = 0; i < 3; i++)
@@ -212,58 +253,40 @@ void loop()
     DPRINTLN(freeRam());
     millix = millis();
   }
-  if (Serial.available())
-  {
-    int a = Serial.read();
-    if (a == 97)
-    {
-      check_time();
-    }
-  }
   if (!digitalRead(PCINT_PIN)) //If pressed the button syn with the web
   {
     DPRINTLN("BUTTON PRESSED");
-    delay(500);
-    getAllFromPG();
-    for (int i = 0; i < 6; i++)
-    {
-      json_clear_starts(i);
-      delay(50);
-      json_week_days(i, prog[i].wateringDay);
-      delay(50);
-      json_program_starts(i);
-      delay(50);
-      json_program_valves(i);
-      delay(50);
-    }
-    DPRINTLN(freeRam());
+    //delay(500);
+    //getAllFromPG();
+    //for (int i = 0; i < 6; i++)
+    //{
+    //  json_clear_starts(i);
+    //  delay(50);
+    //  json_week_days(i, prog[i].wateringDay);
+    //  delay(50);
+    //  json_program_starts(i);
+    //  delay(50);
+    //  json_program_valves(i);
+    //  delay(50);
+    //}
+    //DPRINTLN(freeRam());
   }
-  if (stop_man_web.manual_web && millis() - millixx >= 10000)
+  if (read_pg_web)
   {
-    millixx = millis();
-    for (uint8_t t = 0; t < 10; t++)
-      if (stop_man_web.active[t])
-      {
-        DPRINTLN("CHECK");
-        if (millis() - stop_man_web.millix[t] >= stop_man_web.times[t] - 10000)
-        {
-          DPRINTLN("I close the manual valve with my timer");
-          DPRINTLN(stop_man_web.valve_number[t]);
-          action_valve_pg(0, stop_man_web.valve_number[t], 0, 0);
-          //Save the valve number:
-          stop_man_web.valve_number[t] = 0;
-          //Th current time on timer 0
-          stop_man_web.millix[t] = 0;
-          //The time in ms to stop the valve
-          stop_man_web.times[t] = 0;
-          //The flag of the valve in the struct:
-          stop_man_web.active[t] = false;
-          if (stop_man_web.number_timers > 0)
-            stop_man_web.number_timers--;
-          else
-            stop_man_web.manual_web = false;
-        }
-      }
+    read_pg_web = false;
+    getAllFromPG();
+  }
+  if (send_stop_program)
+  {
+    DPRINTLN("IN");
+    send_stop_program = false;
+    int index_close;
+    char program_letters[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+    for (index_close = 0; index_close < 6; index_close++)
+    {
+      json_program_action(false, program_letters[index_close]);
+      delay(80);
+    }
   }
 }
 /*******************************************************************   functions     ************************************************************************************/
@@ -615,6 +638,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
           position_end -= 2;
         }
         //WEEK STARTS:
+        read_pg_web = true; //This flag is for modified flash memmory;
       }
       JsonArray &week_day = parsed["week_day"]; //done
       if (week_day.success())
@@ -782,8 +806,19 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         if (active.programs[index_close])
         {
           action_prog_pg(0, program_letters[index_close]); //I send the command tom PG
-          delay(1000);
+          active.programs[index_close] = false;
+          send_stop_program = true;
+          delay(800);
         }
+      stop_man_web.manual_web = false;
+      stop_man_web.number_timers = 0;
+      for (uint8_t c = 0; c < 10; c++)
+      {
+        stop_man_web.active[c] = false;
+        stop_man_web.valve_number[c] = 0;
+        stop_man_web.millix[c] = 0;
+        stop_man_web.times[c] = 0;
+      }
     }
   }
 }
@@ -1858,17 +1893,35 @@ void check_time() // This function test if the current time fix with the program
           {
             DPRINTLN("ES LA HORA BUENA");
             if (index_program == 0)
+            {
               json_program_action(true, 'A');
+              active.programs[0] = true;
+            }
             else if (index_program == 1)
+            {
               json_program_action(true, 'B');
+              active.programs[1] = true;
+            }
             else if (index_program == 2)
+            {
               json_program_action(true, 'C');
+              active.programs[2] = true;
+            }
             else if (index_program == 3)
+            {
               json_program_action(true, 'D');
+              active.programs[3] = true;
+            }
             else if (index_program == 4)
+            {
+              active.programs[4] = true;
               json_program_action(true, 'E');
+            }
             else if (index_program == 5)
+            {
+              active.programs[5] = true;
               json_program_action(true, 'F');
+            }
           }
     // check if the hours are fix and we can start a program
   }
