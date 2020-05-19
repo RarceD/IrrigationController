@@ -7,16 +7,18 @@
 
 #include <JamAtm-Vyrsa.h>
 
-#define DEBUG_ON
+// #define DEBUG_ON
 #ifdef DEBUG_ON
 #define DPRINT(...) Serial.print(__VA_ARGS__)
 #define DPRINTLN(...) Serial.println(__VA_ARGS__)
+#define LOG(...) Serial.print(__VA_ARGS__)
+#define LOGLN(...) Serial.println(__VA_ARGS__)
 #else
 #define DPRINT(...)
 #define DPRINTLN(...)
+#define LOG(...) 
+#define LOGLN(...) 
 #endif
-#define LOG(...) Serial.print(__VA_ARGS__)
-#define LOGLN(...) Serial.println(__VA_ARGS__)
 
 #define MAX_NODE_NUMBER 7
 #define MAX_MANUAL_TIMERS 120
