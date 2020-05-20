@@ -236,7 +236,6 @@ void loop()
     // When I try sendding a msg I increase this variable, if I try 3 times without response I erase
     rf_msg_tries++;
     // uint8_t data[150];
-    memset(data, '0', sizeof(data));
     for (uint8_t d = 0; d < sizeof(data); d++)
       Serial.write(data[d]);
     // First I set the time in hours and the master ID
@@ -252,7 +251,10 @@ void loop()
     preamble[offset + 7] = (h / 10) + '0';
     preamble[offset + 8] = (h % 10) + '0';
     //Copy in the data global variable
-    memcpy(data, preamble, sizeof(preamble));
+    for (uint8_t in = 0; in < sizeof(preamble); in++){
+      data[in] = preamble[in];
+    }
+    // memcpy(data, preamble, sizeof(preamble));
     //This variable is the offset of all the radio msg bellow:
     uint16_t index = 28;
     for (uint8_t msg = 0; msg < MAX_NUM_MESSAGES; msg++) //Introduce the messages in the data buffer
@@ -265,7 +267,7 @@ void loop()
       }
       else if (radio_waitting_msg.request_STOP_ALL[msg])
         send_nodo(index, sys_rf.UUID_RF, REQUEST_STOP_ALL, 0, 0, 0, asignacion);
-    uint8_t times = 8; //6 times better
+    uint8_t times = 12; //6 times better
     while (times-- > 0)
     {
       rtc.updateTime();
@@ -279,6 +281,7 @@ void loop()
         Serial.write(data[i]);
       Serial.println(" ");
     }
+    memset(data, 'x', sizeof(data));
     state_machine = MODE_LISTEN_PG;
     break;
   }
@@ -289,7 +292,8 @@ void loop()
   default:
     break;
   }
-
+  //The clear part
+/*
   if ((ack.clear && (millis() - ack.counter > 12000) && !auto_program_flag && !pg_interact_while_radio) || rf_msg_tries > 3) //I only clear the radio buffer when I receive ack from all or when I try 3 times
   {
     for (int i = 0; i < sizeof(buf); i++)
@@ -381,9 +385,8 @@ void loop()
     radio_waitting_msg.num_message_flags = 0;
     DPRINTLN("CLEAR MEMMORY RF FLAGS");
   }
-
+*/
   //5 seconds between the last msg of the node I analize, and anly if no one has touch the PG, I write in PG screen also
-  /*
 
   /*
   When the Serial Port of the PG is set I read what happend there ant act. If there is an inmidiate action I just write an struct 

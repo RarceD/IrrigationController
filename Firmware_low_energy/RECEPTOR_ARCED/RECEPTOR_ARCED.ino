@@ -57,6 +57,7 @@ Sleep lowPower;
 SPIFlash flash(CS_M);
 RH_RF95 driver(CS_RF, INT_RF);
 RHReliableDatagram manager(driver, CLIENT_ADDRESS);
+uint8_t buf[200] = {0};
 
 volatile bool intButton, intRtc, Global_Flag_int;
 
@@ -96,7 +97,7 @@ void setup()
   /*
   sys.id = 1;
   sys.master_id[0] = 'A';
-  sys.master_id[1] = '2';
+  sys.master_id[1] = '1';
   sys.assigned_output[0] = 1;
   sys.assigned_output[1] = 2;
   sys.assigned_output[2] = 3;
@@ -144,6 +145,7 @@ uint32_t millix;
 bool to_sleep;
 void loop()
 {
+  /*
   switch (state_machine)
   {
   case MODE_FIRST_SYN:
@@ -151,7 +153,7 @@ void loop()
     if (driver.available()) // Detect radio activity and set a timer for waking up at 00
     {
       DPRINTLN("MODE_FIRST_SYNC");
-      uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+      // uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
       uint8_t len = sizeof(buf);
       v.receive_time = true;      //I only receive the time ones
       if (driver.recv(buf, &len)) //Just one time at start
@@ -228,17 +230,14 @@ void loop()
     if (driver.available()) // Detect radio activity and set a timer for waking up at 00
     {
       DPRINTLN("Received");
-      uint8_t buf[200] = {0};
       uint8_t len = sizeof(buf);
       if (driver.recv(buf, &len))
       {
-      for (uint8_t d = 0; d < len; d++)
-        Serial.write(buf[d]);
+        for (uint8_t d = 0; d < len; d++)
+          Serial.write(buf[d]);
         uint8_t uuid_master[] = "A1";
         uint8_t index_msg = 0;
         //First I check if this msg is in my network
-        for (int a = 0; a < 150; a++)
-          Serial.write(buf[a]);
         if (from_my_network(uuid_master, buf, index_msg))
         {
           for (; index_msg < 150; index_msg++)
@@ -444,6 +443,17 @@ void loop()
         state_machine = MODE_ACK;
       }
     }
+  }
+*/
+  if (driver.available()) // Detect radio activity and set a timer for waking up at 00
+  {
+    uint8_t len =  sizeof(buf);
+    if (driver.recv(buf, &len))
+    {
+      for (uint8_t d = 0; d < len; d++)
+        Serial.write(buf[d]);
+    }
+    DPRINTLN("a");
   }
 }
 
