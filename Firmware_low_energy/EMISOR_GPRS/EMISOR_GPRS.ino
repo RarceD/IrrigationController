@@ -16,8 +16,8 @@
 #else
 #define DPRINT(...)
 #define DPRINTLN(...)
-#define LOG(...) 
-#define LOGLN(...) 
+#define LOG(...)
+#define LOGLN(...)
 #endif
 
 #define MAX_NODE_NUMBER 7
@@ -77,15 +77,12 @@ typedef struct //If I recevived a stop command in the web I have to know what to
 TinyGsm modem(Serial1);
 TinyGsmClient client(modem);
 PubSubClient mqttClient(client);
+SoftwareSerial softSerial(PG_RXD, PG_TXD);
+SPIFlash flash(CS_M);
 // RH_RF95 driver(CS_RF, INT_RF);
 // RHReliableDatagram manager(driver, SERVER_ADDRESS);
-SPIFlash flash(CS_M);
 program prog[TOTAL_PROG];
-SoftwareSerial softSerial(PG_RXD, PG_TXD);
 RV1805 rtc;
-Sleep lowPower;
-
-Jam jam;
 sysVar sys;
 active_to_stop active;
 stopManualWeb stop_man_web; //MAX 10 valves open at the same time
@@ -93,7 +90,7 @@ stopManualWeb stop_man_web; //MAX 10 valves open at the same time
 uint8_t data[RH_RF95_MAX_MESSAGE_LEN]; // Don't put this on the stack:
 uint8_t buf[50];
 bool rf_flag = false;
-uint8_t UUID_1[] = {'A', '2'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
+uint8_t UUID_1[] = {'A', '6'}; // THE EMITER MUST CHANGE THIS IN EVERY ONE
 String pg;
 char pgData[PG_MAX_LEN];
 uint8_t i, j, rfId, cmd;
@@ -129,7 +126,7 @@ void setup()
   flash.powerUp();
   flash.begin();
   /*
-  char first_mem[] = "VYR_OASIS_A3";
+  char first_mem[] = "VYR_OASIS_A6";
   for (uint8_t aux = 0; aux < sizeof(first_mem); aux++)
     sys.devUuid[aux] = first_mem[aux];
   flash.eraseSector(SYS_VAR_ADDR);
@@ -176,8 +173,7 @@ void setup()
   stop_man_web.number_timers = 0;
   for (uint8_t t = 0; t < 10; t++)
     stop_man_web.active[t] = false;
-  /*
-  json_connect_app(); //for sendding to the web that everything is ok
+  // json_connect_app(); //for sendding to the web that everything is ok
   getAllFromPG();
   for (int i = 0; i < 6; i++)
   {
@@ -190,6 +186,7 @@ void setup()
     json_program_valves(i);
     delay(50);
   }
+  /*
   */
 }
 
@@ -255,24 +252,6 @@ void loop()
     DPRINTLN(freeRam());
     millix = millis();
   }
-  if (!digitalRead(PCINT_PIN)) //If pressed the button syn with the web
-  {
-    DPRINTLN("BUTTON PRESSED");
-    //delay(500);
-    //getAllFromPG();
-    //for (int i = 0; i < 6; i++)
-    //{
-    //  json_clear_starts(i);
-    //  delay(50);
-    //  json_week_days(i, prog[i].wateringDay);
-    //  delay(50);
-    //  json_program_starts(i);
-    //  delay(50);
-    //  json_program_valves(i);
-    //  delay(50);
-    //}
-    //DPRINTLN(freeRam());
-  }
   if (read_pg_web)
   {
     read_pg_web = false;
@@ -290,6 +269,10 @@ void loop()
       delay(80);
     }
   }
+  /*
+  if (!digitalRead(PCINT_PIN)) //If pressed the button syn with the web
+    DPRINTLN("BUTTON PRESSED");
+  */
 }
 /*******************************************************************   functions     ************************************************************************************/
 void connectSIM()
@@ -780,6 +763,15 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         uint8_t time_day = (web_time.charAt(0) - '0') * 10 + (web_time.charAt(1) - '0');
         uint8_t time_month = (web_time.charAt(3) - '0') * 10 + (web_time.charAt(4) - '0');
         uint8_t time_year = (web_time.charAt(8) - '0') * 10 + (web_time.charAt(9) - '0');
+
+        uint16_t d = time_day;
+        uint16_t m = time_month;
+        uint16_t y = 2000 + time_year;
+        uint16_t weekday = (d += m < 3 ? y-- : y - 2, 23 * m / 9 + d + 4 + y / 4 - y / 100 + y / 400) % 7;
+        //Set PG in time:
+        if (weekday == 0)
+          weekday = 7;
+
         DPRINTLN("");
         rtc.updateTime();
         rtc.setDate(time_day);
@@ -787,7 +779,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         rtc.setYear(time_year);
         rtc.setMinutes(time_min);
         rtc.setHours(time_hours);
-        change_time_pg(rtc.getWeekday() - 1, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
+        change_time_pg(weekday, rtc.getHours(), rtc.getMinutes(), rtc.getSeconds()); //year/month/week/day/hour/min
         DPRINTLN(rtc.stringTime());
         DPRINTLN(rtc.stringDate());
       }
@@ -914,7 +906,7 @@ void pgCommand(uint8_t command[], uint8_t len)
 
   uint32_t millix;
   uint8_t i, attempt = 3;
-  jam.calcrc((char *)command, len - 2);
+  calcrc((char *)command, len - 2);
 
   while (attempt)
   {
@@ -1351,7 +1343,6 @@ void memmoryHandler(uint8_t pos, bool sendChange) //this function read memmory i
     { //for each child
       DPRINT("Send change to OASIS: ");
       DPRINTLN(j + 1);
-      // jam.fillWithString(data, String(sys.oasisUuid[j]), PAYLOAD_INDEX); //add child uuid to data
       //comError[j] = !sendCommand(data, i, sys.oasisRfId[j]);             //send command to child
     }
     // checkComError(i);
